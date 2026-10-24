@@ -44,46 +44,90 @@ async function github(env, route, options={}) {
   const value = await response.json().catch(()=>({}));
   return { status:response.status, data:value };
 }
-async function readState(env) {
-  const branch=encodeURIComponent(env.GITHUB_BRANCH || "household-state");
-  const result=await github(env,`/contents/state.json?ref=${branch}`);
-  if(result.status===404) return { envelope:null,sha:null };
-  if(result.status!==200 || !result.data?.content) throw new Error(`GitHub state read failed (${result.status})`);
-  let envelope;
-  try { envelope=JSON.parse(base64ToUtf8(result.data.content)); }
-  catch { throw new Error("Encrypted state file is malformed."); }
-  if(!validEnvelope(envelope)) throw new Error("Invalid encrypted state envelope in repository.");
-  return { envelope,sha:result.data.sha };
-}
+/**
+ * runtime-state is a storage-only orphan branch. The root must contain zero
+ * files (initial state) or exactly state.json as an AES-GCM envelope.
+ * This audit prevents accidental publication of plaintext or source files.
+ */
+const STATE_BRANCH = "runtime-state";
 function validEnvelope(e) {
-  return e && e.v===1 && e.algorithm==="PBKDF2-SHA256/AES-256-GCM" &&
-    [e.salt,e.iv,e.ciphertext].every(s=>typeof s==="string" && /^[A-Za-z0-9+/]+=*$/.test(s)) &&
-    e.salt.length<=100 && e.iv.length<=100 && e.ciphertext.length<=3000000;
+  if (!e || typeof e !== "object" || Array.isArray(e)) return false;
+  if (Object.keys(e).sort().join(",") !== "algorithm,ciphertext,iv,salt,v") return false;
+  if (e.v !== 1 || e.algorithm !== "PBKDF2-SHA256/AES-256-GCM") return false;
+  if (![e.salt, e.iv, e.ciphertext].every(s => typeof s === "string" && /^[A-Za-z0-9+/]+={0,2}$/.test(s))) return false;
+  // Salt = 128 bits, IV = 96 bits; GCM ciphertext includes a 128-bit tag.
+  const b64Size = s => Math.floor(s.length * 3 / 4) - (s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0);
+  return b64Size(e.salt) === 16 && b64Size(e.iv) === 12 && b64Size(e.ciphertext) >= 16 &&
+    e.ciphertext.length <= 3000000;
 }
-async function ensureStateBranch(env) {
-  const branch=env.GITHUB_BRANCH || "household-state";
-  if (!/^[A-Za-z0-9_-]+$/.test(branch)) throw new Error("Invalid state branch name.");
-  const head=await github(env,`/git/ref/heads/${branch}`);
-  if(head.status===200) return;
-  if(head.status!==404) throw new Error(`Unable to inspect state branch (${head.status})`);
-  const base=await github(env,"/git/ref/heads/main");
-  if(base.status!==200 || !base.data?.object?.sha) throw new Error("Main branch must exist before first sync.");
-  const created=await github(env,"/git/refs",{method:"POST",body:JSON.stringify({ref:`refs/heads/${branch}`,sha:base.data.object.sha})});
-  if (![201,422].includes(created.status)) throw new Error(`Unable to initialize state branch (${created.status})`);
+function assertStateConfiguration(env) {
+  if (env.GITHUB_BRANCH !== STATE_BRANCH) {
+    throw new Error("GITHUB_BRANCH must be runtime-state (never main).");
+  }
+}
+async function readState(env) {
+  assertStateConfiguration(env);
+  const branch = encodeURIComponent(STATE_BRANCH);
+  const root = await github(env, `/contents?ref=${branch}`);
+  if (root.status === 404) {
+    const ref = await github(env, `/git/ref/heads/${branch}`);
+    if (ref.status === 404) return { envelope: null, sha: null, branchExists: false };
+    if (ref.status !== 200) throw new Error(`Cannot inspect state branch (${ref.status}).`);
+    // GitHub can return 404 for a root with no tracked files.
+    return { envelope: null, sha: null, branchExists: true };
+  }
+  if (root.status !== 200 || !Array.isArray(root.data)) throw new Error(`State branch audit failed (${root.status}).`);
+  if (root.data.length === 0) return { envelope: null, sha: null, branchExists: true };
+  if (root.data.length !== 1 || root.data[0]?.name !== "state.json" || root.data[0]?.type !== "file") {
+    throw new Error("State branch must contain only the encrypted state.json file.");
+  }
+  const result = await github(env, `/contents/state.json?ref=${branch}`);
+  if (result.status !== 200 || !result.data?.content) throw new Error(`Encrypted state read failed (${result.status}).`);
+  let envelope;
+  try { envelope = JSON.parse(base64ToUtf8(result.data.content)); }
+  catch { throw new Error("Encrypted state file is malformed."); }
+  if (!validEnvelope(envelope)) throw new Error("Invalid AES-GCM envelope in state branch.");
+  return { envelope, sha: result.data.sha, branchExists: true };
+}
+/**
+ * When no state branch exists, create a root commit containing only the
+ * encrypted envelope. Never copy the public main branch into runtime-state.
+ */
+async function createOrphanState(env, envelope) {
+  const blob = await github(env, "/git/blobs", {
+    method: "POST", body: JSON.stringify({ content: JSON.stringify(envelope) + "\\n", encoding: "utf-8" })
+  });
+  if (blob.status !== 201 || !blob.data?.sha) throw new Error(`Encrypted state blob creation failed (${blob.status}).`);
+  const tree = await github(env, "/git/trees", {
+    method: "POST", body: JSON.stringify({ tree: [{ path: "state.json", mode: "100644", type: "blob", sha: blob.data.sha }] })
+  });
+  if (tree.status !== 201 || !tree.data?.sha) throw new Error(`Encrypted state tree creation failed (${tree.status}).`);
+  const commit = await github(env, "/git/commits", {
+    method: "POST", body: JSON.stringify({ message: "Initialize encrypted household state", tree: tree.data.sha, parents: [] })
+  });
+  if (commit.status !== 201 || !commit.data?.sha) throw new Error(`Orphan state commit creation failed (${commit.status}).`);
+  const ref = await github(env, "/git/refs", {
+    method: "POST", body: JSON.stringify({ ref: `refs/heads/${STATE_BRANCH}`, sha: commit.data.sha })
+  });
+  if (ref.status === 422) return json({ error: "State branch was created concurrently. Retry sync." }, 409);
+  if (ref.status !== 201) throw new Error(`State branch creation failed (${ref.status}).`);
+  return json({ ok: true, sha: blob.data.sha });
 }
 async function writeState(env, envelope, expectedSha) {
-  if(!validEnvelope(envelope)) return json({error:"Invalid AES-GCM envelope."},400);
-  if(expectedSha!==null && (typeof expectedSha!=="string" || !/^[a-f0-9]{40}$/.test(expectedSha))) return json({error:"Invalid GitHub content SHA."},400);
-  await ensureStateBranch(env);
-  const actual=await readState(env);
-  if(actual.sha!==expectedSha) return json({error:"State changed. Refresh and merge before retrying."},409);
-  const branch=env.GITHUB_BRANCH || "household-state";
-  const body={message:"Update encrypted household state",content:utf8ToBase64(JSON.stringify(envelope)),branch};
-  if(expectedSha) body.sha=expectedSha;
-  const response=await github(env,"/contents/state.json",{method:"PUT",body:JSON.stringify(body)});
-  if([409,422].includes(response.status)) return json({error:"Concurrent update. Please retry."},409);
-  if(![200,201].includes(response.status)) throw new Error(`GitHub state write failed (${response.status})`);
-  return json({ok:true,sha:response.data?.content?.sha});
+  assertStateConfiguration(env);
+  if (!validEnvelope(envelope)) return json({ error: "Invalid AES-GCM envelope." }, 400);
+  if (expectedSha !== null && (typeof expectedSha !== "string" || !/^[a-f0-9]{40}$/.test(expectedSha))) {
+    return json({ error: "Invalid GitHub content SHA." }, 400);
+  }
+  const actual = await readState(env);
+  if (actual.sha !== expectedSha) return json({ error: "State changed. Refresh and merge before retrying." }, 409);
+  if (!actual.branchExists) return createOrphanState(env, envelope);
+  const body = { message: "Update encrypted household state", content: utf8ToBase64(JSON.stringify(envelope) + "\\n"), branch: STATE_BRANCH };
+  if (expectedSha) body.sha = expectedSha;
+  const response = await github(env, "/contents/state.json", { method: "PUT", body: JSON.stringify(body) });
+  if ([409, 422].includes(response.status)) return json({ error: "Concurrent update. Please retry." }, 409);
+  if (![200, 201].includes(response.status)) throw new Error(`Encrypted state write failed (${response.status}).`);
+  return json({ ok: true, sha: response.data?.content?.sha });
 }
 function secureManualUrl(value) {
   let url;
