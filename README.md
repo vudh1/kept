@@ -2,7 +2,7 @@
 
 **Kept** is a small iPhone-first household PWA inspired by BallerWatch's navy glassmorphism UI. Track appliances, review maintenance due dates, and keep a shopping list with a partner. Its offline, local-first interface is functional without any cloud credentials. An optional Cloudflare Worker synchronizes **client-encrypted** household state into a dedicated `household-state` GitHub branch.
 
-> **Status:** v0.1 foundation. Shopping and maintenance screens, schedules, history, local persistence, encrypted GitHub sync code, Gemini manual research drafts, and Groq Q&A are implemented. Deployment, shared sync, and AI **require your own configuration and API keys**. Native timed Web Push, live store arrival geofencing, and retailer inventory crawling are **not implemented**. Calendar export provides basic iPhone reminders until Web Push is ready.
+> **Status:** v0.1 foundation with automated GitHub Pages publication. Shopping and maintenance screens, schedules, history, local persistence, encrypted GitHub sync code, Gemini manual research drafts, and Groq Q&A are implemented. Deployment, shared sync, and AI **require your own configuration and API keys**. Native timed Web Push, live store arrival geofencing, and retailer inventory crawling are **not implemented**. Calendar export provides basic iPhone reminders until Web Push is ready.
 
 ## Features
 
@@ -27,13 +27,15 @@ The app works without a backend on one device. It stores local data in browser `
 
 ## Publish PWA
 
-Deploy this repository's **root** as a static website. Either GitHub Pages (if your repo/plan allows Pages for a private repo) or Cloudflare Pages is suitable. GitHub Pages supports a project URL like `https://vudh1.github.io/kept/`; all asset and PWA paths are relative. If using Cloudflare Pages, set its build output to the repo root (`.`) and no framework build command. Confirm HTTPS and `manifest.webmanifest` load correctly.
+The [Publish Kept workflow](.github/workflows/pages.yml) validates the app, packages only the public PWA files (not the Worker, documentation, or tests), and deploys them to **GitHub Pages** automatically after each push to `main`. GitHub repository **Settings → Pages → Build and deployment → Source** must be set to **GitHub Actions**. You can also run the workflow manually from **Actions → Publish Kept → Run workflow**.
+
+Your project URL is **https://vudh1.github.io/kept/** after the deployment succeeds. All PWA asset, manifest, and service-worker paths are relative to `/kept/`. Install on iPhone via Safari → Share → **Add to Home Screen**.
 
 On iPhone, open the website in Safari → Share → **Add to Home Screen**. Both people must install from the same web origin. Without sync configured, each device has its **own** local list; it is not automatically shared.
 
 ## Configure encrypted shared sync
 
-1. Create a **fine-grained GitHub personal access token** scoped to `vudh1/kept`, with **Contents: Read and write**. Keep the repo private. Never place the token in browser JavaScript, checked-in files, or `.env` committed to Git.
+1. **Important for this public-code repository:** Create a **separate private repository** for household state (for example, `vudh1/kept-private-data`) with an initial `main` commit. Edit `worker/wrangler.toml` to set `GITHUB_REPO` to that private repository before deploying. Create a **fine-grained GitHub personal access token** scoped only to the private data repository, with **Contents: Read and write**. The shipped default `GITHUB_REPO = "vudh1/kept"` is for development only: if you use it unchanged after making Kept public, the encrypted `household-state` Git history is publicly visible. Encryption helps, but that is **not** a private data store. Never put the token in the browser bundle, checked-in files, or committed `.env` files.
 2. Install Cloudflare Wrangler using `npx wrangler` and authenticate (`npx wrangler login`); deploy from `worker/`:
 
    ```sh
@@ -44,7 +46,7 @@ On iPhone, open the website in Safari → Share → **Add to Home Screen**. Both
    npx wrangler deploy
    ```
 
-3. In `worker/wrangler.toml`, set `ALLOWED_ORIGIN` to your PWA's **origin** (e.g. `https://vudh1.github.io`, *not* `/kept/`). The origin must be HTTPS for deployed use. Set `GITHUB_REPO` correctly. On the first upload the Worker creates `household-state` from `main`, then writes `state.json` with a full AES-GCM envelope. Leave `state.json` private.
+3. In `worker/wrangler.toml`, set `ALLOWED_ORIGIN` to your PWA's **origin** (e.g. `https://vudh1.github.io`, *not* `/kept/`). The origin must be HTTPS for deployed use. Set `GITHUB_REPO` correctly. On the first upload the Worker creates `household-state` from `main`, then writes `state.json` with a full AES-GCM envelope. **The data repository must remain private.**
 4. On **each iPhone**, open Kept → Settings. Enter Worker URL (`https://kept-sync.<your-subdomain>.workers.dev`), same **SYNC_TOKEN**, and the same strong **household encryption passphrase** (12+ characters; 5–6 random words preferred). Tap **Save & sync now**. The password is deliberately memory-only; reenter it after app reload/restart. Access token is session-only (cleared after browser session).
 5. Try editing the shopping list on device A, unlock and sync device B, and verify both lists merge. When unlocked, Kept syncs after changes, after returning to the app, and every minute while visible.
 
