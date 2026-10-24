@@ -1,0 +1,50 @@
+name: Deploy Kept Cloudflare Worker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kept-worker-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+      - name: Validate code and tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check
+      - name: Require deployment secrets
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STATE_PAT: ${{ secrets.KEPT_GITHUB_PAT }}
+        run: |
+          test -n "$CF_TOKEN" || { echo "Missing CLOUDFLARE_API_TOKEN"; exit 1; }
+          test -n "$CF_ACCOUNT" || { echo "Missing CLOUDFLARE_ACCOUNT_ID"; exit 1; }
+          test -n "$STATE_PAT" || { echo "Missing KEPT_GITHUB_PAT"; exit 1; }
+      - name: Deploy Worker with server-side secrets
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          secrets: |
+            GITHUB_TOKEN
+            SYNC_TOKEN
+            GEMINI_API_KEY
+            GROQ_API_KEY
+        env:
+          GITHUB_TOKEN: ${{ secrets.KEPT_GITHUB_PAT }}
+          SYNC_TOKEN: ${{ secrets.KEPT_SYNC_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
