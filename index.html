@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070e1d">
+  <meta name="description" content="Kept keeps the home running. Shared shopping and effortless home maintenance.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="kept.">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>kept. · Home, handled.</title>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><div class="glow glow-a"></div><div class="glow glow-b"></div><div class="glow glow-c"></div></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <a href="#today" class="brand" aria-label="Kept, Today"><span class="brand-mark" aria-hidden="true">k<span>·</span></span><span>kept<span class="brand-period">.</span></span></a>
+      <div class="header-right"><span id="connection-pill" class="connection-pill" aria-live="polite">On this device</span><button class="round-button" type="button" data-nav="settings" aria-label="Open settings"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a2 2 0 0 0 .4 2.2l-2 2a2 2 0 0 0-2.2-.4l-1 1.5h-3l-1-1.5a2 2 0 0 0-2.2.4l-2-2A2 2 0 0 0 6.8 15l-1.5-1v-3l1.5-1a2 2 0 0 0-.4-2.2l2-2a2 2 0 0 0 2.2.4l1-1.5h3l1 1.5a2 2 0 0 0 2.2-.4l2 2a2 2 0 0 0-.4 2.2l1.5 1v3z"/></svg></button></div>
+    </header>
+    <main id="app" aria-live="off"></main>
+    <nav class="tabbar glass" aria-label="Main navigation">
+      <button type="button" data-nav="today" class="nav-item active" aria-label="Today"><span class="nav-symbol">⌂</span><span>Today</span></button>
+      <button type="button" data-nav="home" class="nav-item" aria-label="Appliances"><span class="nav-symbol">▦</span><span>Home</span></button>
+      <button type="button" data-nav="shop" class="nav-item" aria-label="Shopping list"><span class="nav-symbol">♧</span><span>Shop</span></button>
+      <button type="button" data-nav="assist" class="nav-item" aria-label="AI assistant"><span class="nav-symbol">✦</span><span>AI</span></button>
+    </nav>
+  </div>
+  <dialog id="editor" class="modal"><div id="editor-content"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

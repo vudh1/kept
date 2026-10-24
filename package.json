@@ -1,0 +1,12 @@
+{
+  "name": "kept-home",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check app.js && node --check worker/index.js && node --test tests/*.test.js",
+    "serve": "npx serve . -l 4173"
+  },
+  "engines": { "node": ">=20" }
+}
