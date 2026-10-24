@@ -1,0 +1,56 @@
+name: Publish Kept
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate application
+        run: npm run check
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Package public PWA files only
+        run: |
+          mkdir -p dist/lib dist/icons
+          cp index.html app.js styles.css sw.js manifest.webmanifest .nojekyll dist/
+          cp lib/*.js dist/lib/
+          cp icons/* dist/icons/
+          test -f dist/index.html
+          test -f dist/manifest.webmanifest
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish website
+        id: deployment
+        uses: actions/deploy-pages@v4
