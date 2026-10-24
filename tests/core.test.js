@@ -64,3 +64,58 @@ test("worker rejects unauthorized clients, disallowed origins, and insecure conf
   assert.equal(safeEqual("this is same","this is same"),true);
   assert.equal(safeEqual("this is same","this is different"),false);
 });
+
+test("runtime-state first sync creates a storage-only orphan root commit", async()=>{
+  const realFetch = globalThis.fetch;
+  const requests = [];
+  const envelope = await encryptState({ ...blankState(), shopping: [{ id: "secret", name: "Private grocery" }] }, "a very long high entropy passphrase");
+  const token = "this is a long secret access token";
+  const env = { GITHUB_REPO: "vudh1/kept", GITHUB_BRANCH: "runtime-state", GITHUB_TOKEN: "test-only", SYNC_TOKEN: token, ALLOWED_ORIGIN: "https://vudh1.github.io" };
+  const respond = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
+  globalThis.fetch = async (url, opts={}) => {
+    const u = new URL(url);
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    requests.push({ path: u.pathname + u.search, method: opts.method || "GET", body });
+    if (u.pathname.endsWith("/contents") && u.search === "?ref=runtime-state") return respond(404, {});
+    if (u.pathname.endsWith("/git/ref/heads/runtime-state")) return respond(404, {});
+    if (u.pathname.endsWith("/git/blobs")) return respond(201, { sha: "a".repeat(40) });
+    if (u.pathname.endsWith("/git/trees")) return respond(201, { sha: "b".repeat(40) });
+    if (u.pathname.endsWith("/git/commits")) return respond(201, { sha: "c".repeat(40) });
+    if (u.pathname.endsWith("/git/refs")) return respond(201, { ref: "refs/heads/runtime-state" });
+    throw new Error("Unexpected GitHub call: " + u.href);
+  };
+  try {
+    const response = await handleRequest(new Request("https://worker.example/api/state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Origin: "https://vudh1.github.io", "X-Kept-Key": token },
+      body: JSON.stringify({ envelope, sha: null })
+    }), env);
+    assert.equal(response.status, 200);
+    const blob = requests.find(x => x.path.endsWith("/git/blobs")).body;
+    assert.deepEqual(JSON.parse(blob.content), envelope);
+    assert.ok(!blob.content.includes("Private grocery"));
+    const tree = requests.find(x => x.path.endsWith("/git/trees")).body;
+    assert.deepEqual(tree.tree.map(x => x.path), ["state.json"]);
+    assert.deepEqual(requests.find(x => x.path.endsWith("/git/commits")).body.parents, []);
+    assert.equal(requests.find(x => x.path.endsWith("/git/refs")).body.ref, "refs/heads/runtime-state");
+    assert.ok(!requests.some(x => x.path.includes("/heads/main")));
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test("runtime-state refuses public source files and unsafe branch configuration", async()=>{
+  const realFetch = globalThis.fetch;
+  const token = "this is a long secret access token";
+  const env = { GITHUB_REPO: "vudh1/kept", GITHUB_BRANCH: "runtime-state", GITHUB_TOKEN: "test-only", SYNC_TOKEN: token };
+  globalThis.fetch = async (url, opts={}) => {
+    const u = new URL(url);
+    assert.equal(opts.method || "GET", "GET");
+    assert.ok(u.pathname.endsWith("/contents"));
+    return new Response(JSON.stringify([{ name: "index.html", type: "file" }]), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const badTree = await handleRequest(new Request("https://worker.example/api/state", { headers: { "X-Kept-Key": token } }), env);
+    assert.equal(badTree.status, 500);
+    const unsafe = await handleRequest(new Request("https://worker.example/api/state", { headers: { "X-Kept-Key": token } }), { ...env, GITHUB_BRANCH: "main" });
+    assert.equal(unsafe.status, 500);
+  } finally { globalThis.fetch = realFetch; }
+});
