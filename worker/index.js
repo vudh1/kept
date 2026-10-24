@@ -95,7 +95,7 @@ async function readState(env) {
  */
 async function createOrphanState(env, envelope) {
   const blob = await github(env, "/git/blobs", {
-    method: "POST", body: JSON.stringify({ content: JSON.stringify(envelope) + "\\n", encoding: "utf-8" })
+    method: "POST", body: JSON.stringify({ content: JSON.stringify(envelope) + "\n", encoding: "utf-8" })
   });
   if (blob.status !== 201 || !blob.data?.sha) throw new Error(`Encrypted state blob creation failed (${blob.status}).`);
   const tree = await github(env, "/git/trees", {
@@ -122,7 +122,7 @@ async function writeState(env, envelope, expectedSha) {
   const actual = await readState(env);
   if (actual.sha !== expectedSha) return json({ error: "State changed. Refresh and merge before retrying." }, 409);
   if (!actual.branchExists) return createOrphanState(env, envelope);
-  const body = { message: "Update encrypted household state", content: utf8ToBase64(JSON.stringify(envelope) + "\\n"), branch: STATE_BRANCH };
+  const body = { message: "Update encrypted household state", content: utf8ToBase64(JSON.stringify(envelope) + "\n"), branch: STATE_BRANCH };
   if (expectedSha) body.sha = expectedSha;
   const response = await github(env, "/contents/state.json", { method: "PUT", body: JSON.stringify(body) });
   if ([409, 422].includes(response.status)) return json({ error: "Concurrent update. Please retry." }, 409);
