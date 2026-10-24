@@ -1,0 +1,40 @@
+name: Initialize encrypted runtime-state
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/init-runtime-state.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  initialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Create an empty, unrelated root commit on runtime-state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin refs/heads/runtime-state >/dev/null 2>&1; then
+            echo "runtime-state already exists; leaving its encrypted state untouched."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan runtime-state
+          git rm -rfq --cached .
+          if test -n "$(git ls-files)"; then
+            echo "Refusing to initialize a nonempty state tree."
+            exit 1
+          fi
+          git commit --allow-empty -m "Initialize isolated encrypted state branch"
+          git push origin HEAD:refs/heads/runtime-state
