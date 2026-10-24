@@ -4,8 +4,9 @@ compatibility_date = "2026-10-01"
 workers_dev = true
 
 [vars]
+# This public repository holds *only ciphertext* on runtime-state; see README privacy notes.
 GITHUB_REPO = "vudh1/kept"
-GITHUB_BRANCH = "household-state"
+GITHUB_BRANCH = "runtime-state"
 # Set ALLOWED_ORIGIN to the exact PWA origin (without path), for example:
 ALLOWED_ORIGIN = "https://vudh1.github.io"
 GEMINI_MODEL = "gemini-2.5-flash"
