@@ -20,6 +20,6 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 name = "HOUSEHOLD_AUTH"
 class_name = "HouseholdAccess"
 
-[exports.HouseholdAccess]
-type = "durable-object"
-storage = "sqlite"
+[[migrations]]
+tag = "pin-auth-v1"
+new_sqlite_classes = ["HouseholdAccess"]
