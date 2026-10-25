@@ -1,0 +1,28 @@
+name: Validate PIN Worker bundle
+
+on:
+  pull_request:
+    paths:
+      - worker/**
+      - .github/workflows/deploy-worker.yml
+      - .github/workflows/pin-worker-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax and security tests
+        run: npm run check
+      - name: Validate Cloudflare Worker without deploying or reading secrets
+        working-directory: worker
+        run: |
+          npx --yes wrangler@4.81.0 deploy --dry-run --outdir /tmp/kept-worker-check
