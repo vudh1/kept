@@ -1,6 +1,6 @@
 # Kept FRIDAY cardless GitHub administrator authentication — staged
 
-**Status: prototype under review; not deployed or enabled.** This is a separate Worker entrypoint. It does **not** replace `kept-sync` or the existing fail-closed `kept-friday-admin` Worker, nor does it expose a reminder read, write or TV pairing route. It is intentionally absent from any deployment workflow or production `wrangler.toml`.
+**Status: GitHub sign-in approach approved by owner; implementation remains a draft under review, not deployed or enabled.** This is a separate Worker entrypoint. It does **not** replace `kept-sync` or the existing fail-closed `kept-friday-admin` Worker, nor does it expose a reminder read, write or TV pairing route. It is intentionally absent from any deployment workflow or production `wrangler.toml`.
 
 ## Why GitHub OAuth
 
@@ -18,8 +18,8 @@ Alternatives: passkeys/WebAuthn can remove the GitHub login dependency but need 
 
 ## Remaining gates before deployment
 
-- [ ] Review and threat-test login CSRF, D1 atomic `RETURNING` behavior in an actual local Wrangler D1 instance, rate-limit bypass/DoS, cookie/session expiration, spoofed requests, browser logout, and cross-site redirects. Unit mocks are **not** a complete integration test.
-- [ ] Owner registers a separate **GitHub OAuth App**, with exact `https://<dedicated-worker-host>/auth/callback` redirect and **wildcard callback matching disabled**. Do not request repository access or additional scopes. Requires an owner-managed GitHub account; do not put registration credentials into source.
+- [ ] Review and threat-test login CSRF, D1 atomic `RETURNING` behavior in an actual local Wrangler D1 instance, rate-limit bypass/DoS, cookie/session expiration, spoofed requests, browser logout, and cross-site redirects. Unit mocks and Node's actual SQLite engine smoke are **not** a complete Cloudflare D1 integration test. Run `node tests/friday-github-auth-sqlite.smoke.mjs` on Node 24+ from the Kept repo root for a real-SQLite-only check.
+- [ ] Owner registers a separate **GitHub OAuth App**, with exact `https://<dedicated-worker-host>/auth/callback` redirect and **wildcard callback matching disabled**. Do not request repository access or additional scopes. Requires an owner-managed GitHub account; do not put registration credentials into source. The planned dedicated host is `https://kept-friday-auth.vudhone.workers.dev`, *not yet deployed*; confirm that host is actually available in the owner's Cloudflare account before registering its callback.
 - [ ] Owner provisions private Worker secrets: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ADMIN_GITHUB_IDS` (JSON numeric immutable IDs), `RATE_LIMIT_KEY` (32+ unpredictable characters), `PUBLIC_BASE_URL` (exact HTTPS origin). Never log these or populate the repo with personal identifiers.
 - [ ] Review the **existing** Cloudflare Workers account's *actual* plan/usage for cardless safety; do not use a card-required tier. Get separately approved D1 binding `AUTH_DB` to the existing **empty** `kept-friday-reminders` database only after the migration is reviewed and applied intentionally. No migration, D1 schema or new Worker is deployed by this PR.
 - [ ] Check provider terms immediately before activation; perform local Wrangler D1 and end-to-end GitHub login smoke tests; confirm callback origin and all negative tests in an isolated preview. Manually test revoke-all, expiry, HTTP 403/503 and outages.
