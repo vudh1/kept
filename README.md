@@ -10,10 +10,10 @@
 
 - iPhone PWA; glass design, safe-area nav, installable home screen, offline app shell.
 - Grocery/shopping list: add, edit, remove, check off, quantities, preferred stores, and store filters.
-- Appliance catalog with 15 common categories and **general starter tasks only**; record brand/model, room, manual link, and last-maintenance date.
+- Appliance catalog with **31 named categories plus Other** and editable general starter tasks. Choose category first, select relevant tasks, optionally enter a last-maintenance date. Brand/model/manual are tucked under optional details; no AI required.
 - Maintenance: flexible day intervals, overdue/soon views, completion history, optional calendar event export (single upcoming occurrences, with alert one day early).
 - Offline local device database and an **opt-in** encrypted two-device sync. GitHub stores a single AES-256-GCM envelope, not readable shopping data.
-- AI research: Gemini reads a user-provided HTTPS public manual link and creates **review-required** drafts with evidence excerpts. Tasks with unsupported intervals are excluded. It never silently applies updates.
+- AI research is an optional advanced step: Gemini reads a user-provided HTTPS public manual link and creates **review-required** drafts with evidence excerpts. Tasks with unsupported intervals are excluded. It never silently applies updates.
 - Groq assistant for generic maintenance Q&A; household shopping/history is not sent to models by default.
 - Node unit tests for date handling, AES-GCM, merges, authentication, and URL validation.
 
@@ -92,5 +92,7 @@ You may edit `GEMINI_MODEL` and `GROQ_MODEL` in `worker/wrangler.toml` to an ava
 - `lib/sync.js`: client ciphertext sync and AI transport.
 - `worker/index.js`: Cloudflare auth, GitHub ciphertext bridge, opt-in Gemini/Groq endpoints.
 - `tests`: pure logic and security boundary checks.
+
+Kept provides an offline category-first baseline without calling any AI service. Existing appliance schedules are not silently rewritten when the built-in catalog changes. Review source links, disable inapplicable tasks, and adjust intervals according to your manual and household usage. No FRIDAY integration is added by this catalog enhancement.
 
 Kept is designed to give you a dependable household app without requiring an AI model for every reminder or task. **Manufacturer documentation takes priority** over starter templates and model-generated drafts.
