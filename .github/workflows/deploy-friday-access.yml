@@ -1,54 +1,21 @@
-name: Protect isolated Kept FRIDAY administrators with Access
+name: Kept FRIDAY Access (retired — cardless decision)
 
+# Do not automatically enroll in a card-required Zero Trust plan.
+# This workflow preserves the historical route while preventing cloud writes.
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/deploy-friday-access.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: kept-friday-access-production
-  cancel-in-progress: false
-
 jobs:
-  deploy-access:
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: production
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Validate code and tests
-        run: npm run check
-      - name: Validate exact private administrator allowlist
-        run: node scripts/provision-friday-access.mjs --validate-only
-        env:
-          ADMIN_EMAILS: ${{ secrets.KEPT_FRIDAY_ADMIN_EMAILS }}
-      - name: Require isolated Access provisioning token
-        env:
-          ACCESS_TOKEN: ${{ secrets.KEPT_FRIDAY_ACCESS_TOKEN }}
+      - name: Explain stopped Access enrollment
         run: |
-          test -n "$ACCESS_TOKEN" || { echo "Missing KEPT_FRIDAY_ACCESS_TOKEN"; exit 1; }
-      - name: Deploy separate fail-closed administrator Worker
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: worker/friday-admin
-          secrets: |
-            ADMIN_EMAILS
-        env:
-          ADMIN_EMAILS: ${{ secrets.KEPT_FRIDAY_ADMIN_EMAILS }}
-      - name: Require named-email Cloudflare Access policy
-        run: node scripts/provision-friday-access.mjs
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.KEPT_FRIDAY_ACCESS_TOKEN }}
-          CLOUDFLARE_ACCESS_TOKEN: ${{ secrets.KEPT_FRIDAY_ACCESS_TOKEN }}
-          ADMIN_EMAILS: ${{ secrets.KEPT_FRIDAY_ADMIN_EMAILS }}
+          echo "FRIDAY cardless policy: Cloudflare Zero Trust onboarding requires payment information."
+          echo "No Access app, billing plan, Worker, or household feed will be changed here."
+          echo "See https://github.com/vudh1/friday/issues/13 for the reviewed no-card identity replacement."
+          exit 1
