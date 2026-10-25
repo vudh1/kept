@@ -137,3 +137,12 @@ textarea { min-height: 95px; resize: vertical; }
 .advanced-details { margin: 14px 0; border: 1px solid var(--stroke); padding: 12px; border-radius: 12px; background: rgba(100,138,182,.08); }
 .advanced-details summary { cursor: pointer; color: #bfdeef; font-size: .84rem; font-weight: 600; min-height: 32px; padding-top: 5px; }
 .advanced-details[open] summary { margin-bottom: 9px; }
+
+/* iPhone appliance setup: keep the modal accessible without forcing the keyboard. */
+.modal { max-height: calc(100dvh - max(24px, env(safe-area-inset-top)) - max(24px, env(safe-area-inset-bottom))); overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.modal .form-actions { position: sticky; bottom: -24px; padding: 13px 0 calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(19,35,58,.91),#13233a 26%); z-index: 1; }
+.modal:focus { outline: none; }
+.setup-reminder { margin-top: 15px; border-color: rgba(145,193,234,.35); }
+.setup-link { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; color: var(--text); background: transparent; border: 0; border-top: 1px solid var(--stroke); padding: 13px 1px; min-height: 44px; font-size: .87rem; }
+.setup-link span { flex: none; color: var(--accent); font-weight: 700; }
+@media (max-width: 420px) { .modal { width: calc(100% - 16px); padding: 18px; border-radius: 20px; } .modal .form-actions { bottom: -18px; } }

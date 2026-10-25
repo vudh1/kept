@@ -14,7 +14,7 @@ try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch {
 settings.deviceId ||= uid();
 settings.deviceName ||= "My iPhone";
 settings.backendUrl ||= "";
-localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Browser storage may be unavailable; keep settings in memory. */ }
 let credentials = { token: sessionStorage.getItem("kept.syncToken") || "", passphrase: "" };
 let tab = "today";
 let selectedAppliance = null;
@@ -29,9 +29,17 @@ let chatMessages = [{ type: "assistant", text: "Hi! I can help you understand ma
 function config() { return { baseUrl: settings.backendUrl.trim(), token: credentials.token, passphrase: credentials.passphrase }; }
 function canSync() { const c = config(); return Boolean(c.baseUrl && c.token && c.passphrase); }
 function save({ sync = true } = {}) {
-  writeLocal(state);
+  try {
+    writeLocal(state);
+  } catch {
+    // Keep the current session usable and clearly warn about lost durability.
+    render();
+    notify("This device could not save changes. Check Safari storage settings before closing Kept.");
+    return false;
+  }
   render();
   if (sync) queueSync();
+  return true;
 }
 function mutate(collection, id, updates) {
   const index = state[collection].findIndex(x => x.id === id);
@@ -83,7 +91,10 @@ function visibleShopping() { return state.shopping.filter(x => !x.deleted); }
 function taskCount() { return upcomingTasks(state).filter(t => ["overdue","due","soon"].includes(t.due.kind)).length; }
 function taskCard(task) {
   const a = visibleAppliances().find(x => x.id === task.applianceId);
-  return `<div class="card glass"><div class="card-row"><div class="icon-tile">${iconFor(a?.category)}</div><div class="card-main"><div class="card-title">${html(task.title)}</div><div class="card-description">${html(a?.name || "Home")} · ${html(formatDate(task.due.date))}</div></div><span class="pill ${task.due.kind}">${html(task.due.label)}</span></div><div class="action-row"><button class="btn small secondary" data-action="complete" data-id="${html(task.id)}">Mark done</button><button class="btn small secondary" data-action="edit-task" data-id="${html(task.id)}">Edit schedule</button></div></div>`;
+  // The Home detail view passes raw persisted tasks; Today passes computed tasks.
+  // Normalize both so a newly saved appliance never crashes during rendering.
+  const due = task.due || status(task);
+  return `<div class="card glass"><div class="card-row"><div class="icon-tile">${iconFor(a?.category)}</div><div class="card-main"><div class="card-title">${html(task.title)}</div><div class="card-description">${html(a?.name || "Home")} · ${html(formatDate(due.date))}</div></div><span class="pill ${due.kind}">${html(due.label)}</span></div><div class="action-row"><button class="btn small secondary" data-action="complete" data-id="${html(task.id)}">Mark done</button><button class="btn small secondary" data-action="edit-task" data-id="${html(task.id)}">Edit schedule</button></div></div>`;
 }
 function iconFor(category) {
   const map = { dishwasher:"◈",refrigerator:"▣",washer:"◉",dryer:"✺",hvac:"❋","water-heater":"♨",irrigation:"◌","smoke-alarm":"◇","air-purifier":"✳",vacuum:"✧",range:"♨","coffee-maker":"☕","range-hood":"≋","garage-door":"▤","water-filter":"◍",microwave:"▧",freezer:"❄","garbage-disposal":"♻","toaster-oven":"♨","electric-kettle":"♨","robot-vacuum":"◎",humidifier:"◌",dehumidifier:"◍","bathroom-fan":"✺","ceiling-fan":"✺","sump-pump":"◈","water-softener":"◍",thermostat:"◉","security-camera":"◇","window-ac":"❄","leak-sensor":"◈",other:"⌂" };
@@ -95,7 +106,8 @@ function empty(title, detail, action, label) {
 function renderToday() {
   const all = upcomingTasks(state);
   const important = all.filter(t => ["overdue","due","soon"].includes(t.due.kind));
-  const needsDates = all.filter(t => t.due.kind === "unscheduled").length;
+  const unscheduled = all.filter(t => t.due.kind === "unscheduled");
+  const needsDates = unscheduled.length;
   const open = visibleShopping().filter(i => !i.done);
   const hour = new Date().getHours();
   const greeting = hour < 11 ? "Good morning." : hour < 17 ? "Good afternoon." : "Good evening.";
@@ -104,7 +116,7 @@ function renderToday() {
     <div class="grid-two"><div class="metric glass"><div class="metric-icon">⌂</div><div class="metric-number">${important.length}</div><div class="metric-caption">Maintenance due soon</div></div><div class="metric glass"><div class="metric-icon">♧</div><div class="metric-number">${open.length}</div><div class="metric-caption">Things to pick up</div></div></div>
     <section class="section"><div class="section-head"><h2>Up next</h2><button class="link-button" data-nav="home">View home →</button></div>
     ${important.length ? important.slice(0, 4).map(taskCard).join("") : empty("You're all caught up",all.length ? "No maintenance is due in the next 14 days." : "Add an appliance to build your maintenance schedule.","add-appliance","Add an appliance")}</section>
-    ${needsDates ? `<p class="form-tip">${needsDates} maintenance schedule${needsDates===1?" needs":"s need"} a last-serviced date. Add one whenever you know it — no invented due dates.</p>` : ""}
+    ${needsDates ? `<div class="card glass setup-reminder"><div class="section-head"><h2>Finish setting up</h2><span class="pill">${needsDates} need dates</span></div><p class="form-tip">Your appliance was added, but these tasks need a last-maintained date before Kept can calculate reminders.</p>${unscheduled.slice(0,3).map(t=>`<button type="button" class="setup-link" data-action="edit-task" data-id="${html(t.id)}">${html(t.title)} <span>Set date →</span></button>`).join("")}</div>` : ""}
     <section class="section"><div class="section-head"><h2>Shopping preview</h2><button class="link-button" data-nav="shop">Open list →</button></div>
     <div class="card glass">${open.length ? open.slice(0, 4).map(item => `<button class="check-row" data-action="toggle-item" data-id="${html(item.id)}"><span class="check-circle"></span><span class="check-content"><span class="check-title">${html(item.name)}</span><div class="check-subtitle">${html([item.quantity,item.store].filter(Boolean).join(" · "))}</div></span></button>`).join("") : `<p class="muted">Nothing on your shopping list right now.</p>`}</div></section>`;
 }
@@ -170,8 +182,17 @@ function render() {
 }
 function openModal(content) {
   $("#editor-content").innerHTML = content;
-  editor.showModal();
-  editor.querySelector("input:not([type=hidden]),select")?.focus();
+  editor.setAttribute("tabindex", "-1");
+  editor.scrollTop = 0;
+  try {
+    if (typeof editor.showModal === "function") editor.showModal();
+    else editor.setAttribute("open", "");
+    // Avoid opening the iOS keyboard and scrolling the whole modal off-screen.
+    editor.focus({ preventScroll: true });
+  } catch {
+    editor.setAttribute("open", "");
+    editor.focus();
+  }
 }
 function formActions() { return `<div class="form-actions"><button class="btn secondary" type="button" data-action="close-modal">Cancel</button><button class="btn" type="submit">Save</button></div>`; }
 function starterOptions(category) {
