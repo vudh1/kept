@@ -18,6 +18,10 @@ The new [`projectFridayReminders`](lib/friday-projection.js) function runs only 
 
 **This is not a functioning Kept-to-Vela feed:** it is not imported by the PWA, makes no network request, does not persist consent and has no server-side consumer grant. Do not attempt to use the current `SYNC_TOKEN`, TV remote PIN or an exported JSON file as cross-app authorization. First implement reviewed household identity/device pairing, grants, encryption-at-rest/retention and Vela display/revocation behavior, with independent tests and deployment. The owner has approved the *minimal data class* only, not a production service or paid resource.
 
+## Cost boundary and admin authentication
+
+The [FRIDAY cardless rule](https://github.com/vudh1/friday/blob/main/docs/COST_POLICY.md) blocks new payment information, including the Cloudflare Zero Trust Free onboarding requirement, unless the owner makes a separate explicit exception. Zero Trust was **not activated** for FRIDAY; the isolated Kept administrator Worker is deployed but requires Access and remains fail closed. No reminder-sharing feed or Vela grant exists. A cardless, standards-based replacement identity is tracked in [FRIDAY issue #13](https://github.com/vudh1/friday/issues/13). Kept's normal offline and encrypted sync paths remain unchanged; actual provider invoices are not visible from code. **No billing impact** from this documentation change.
+
 ## Safe future integration
 
 - **Do not bypass client-side encryption.** FRIDAY or Vela may not read Kept's `runtime-state` branch, and existing shared tokens must not be repurposed as cross-app identity.
