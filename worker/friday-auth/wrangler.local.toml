@@ -1,0 +1,14 @@
+# Local-only D1 smoke-test configuration. Never deploy this configuration.
+# Placeholder database ID is intentionally not a real Cloudflare resource.
+name = "kept-friday-auth-local-only"
+main = "index.js"
+compatibility_date = "2026-10-25"
+workers_dev = false
+
+[vars]
+PUBLIC_BASE_URL = "https://localhost:8787"
+
+[[d1_databases]]
+binding = "AUTH_DB"
+database_name = "kept-friday-auth-local-only"
+database_id = "00000000-0000-4000-8000-000000000001"
