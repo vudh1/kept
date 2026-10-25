@@ -20,7 +20,7 @@ Alternatives: passkeys/WebAuthn can remove the GitHub login dependency but need 
 
 ## Remaining gates before deployment
 
-- [ ] Review and threat-test login CSRF, D1 atomic `RETURNING` behavior in an actual local Wrangler D1 instance, rate-limit bypass/DoS, cookie/session expiration, spoofed requests, browser logout, and cross-site redirects. Unit mocks and Node's actual SQLite engine smoke are **not** a complete Cloudflare D1 integration test. Run `node tests/friday-github-auth-sqlite.smoke.mjs` on Node 24+ from the Kept repo root for a real-SQLite-only check.
+- [ ] Finish external security review, rate-limit bypass/DoS analysis, cookie/session expiration, spoofed requests, actual browser logout, OAuth callback and cross-site redirect tests. Unit mocks, Node SQLite and the **local Wrangler Worker+D1 smoke test** below pass, but a hosted GitHub sign-in and production D1 have not been tested. Run `node tests/friday-github-auth-sqlite.smoke.mjs` on Node 24+ for the independent SQLite check.
 - [ ] Owner registers a separate **GitHub OAuth App**, with exact `https://<dedicated-worker-host>/auth/callback` redirect and **wildcard callback matching disabled**. Do not request repository access or additional scopes. Requires an owner-managed GitHub account; do not put registration credentials into source. The planned dedicated host is `https://kept-friday-auth.vudhone.workers.dev`, *not yet deployed*; confirm that host is actually available in the owner's Cloudflare account before registering its callback.
 - [ ] Owner provisions private Worker secrets: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ADMIN_GITHUB_IDS` (JSON numeric immutable IDs), `RATE_LIMIT_KEY` (32+ unpredictable characters), `PUBLIC_BASE_URL` (exact HTTPS origin). Never log these or populate the repo with personal identifiers.
 - [ ] Review the **existing** Cloudflare Workers account's *actual* plan/usage for cardless safety; do not use a card-required tier. Get separately approved D1 binding `AUTH_DB` to the existing **empty** `kept-friday-reminders` database only after the migration is reviewed and applied intentionally. No migration, D1 schema or new Worker is deployed by this PR.
@@ -29,16 +29,23 @@ Alternatives: passkeys/WebAuthn can remove the GitHub login dependency but need 
 
 ### Local-only Wrangler D1 verification
 
-The file [`wrangler.local.toml`](wrangler.local.toml) binds a **fictitious UUID** for a temporary database, disables `workers.dev` deployment, and has no real credentials. It is for **local testing only**. Never pass `--remote`, deploy that configuration, or put the GitHub OAuth secret in source code.
+The file [`wrangler.local.toml`](wrangler.local.toml) binds a **fictitious UUID** for a temporary database, disables `workers.dev` deployment, and launches the isolated fake-GitHub test entrypoint [`friday-wrangler-d1-worker.smoke.js`](../../tests/friday-wrangler-d1-worker.smoke.js). All credentials in the test harness are deliberately invalid placeholders. It is for **local testing only**. Never pass `--remote`, deploy that configuration, or put the real GitHub OAuth secret in source code.
 
 ```sh
 # From the repository root; does not require Cloudflare login.
 npx wrangler d1 execute kept-friday-auth-local-only --local \
   --config worker/friday-auth/wrangler.local.toml \
   --file worker/friday-auth/schema.sql
+
+# Launch local workerd + the local D1 binding (leave it running).
+npx wrangler dev --config worker/friday-auth/wrangler.local.toml \
+  --ip 127.0.0.1 --port 8787
+
+# In another terminal:
+curl --noproxy '*' http://127.0.0.1:8787/__local_smoke
 ```
 
-Using local Wrangler **4.46.0** on 2026-10-25, all seven schema statements succeeded. A one-time `DELETE ... RETURNING verifier` returned the verifier on the first call and zero rows on replay. A separate local `INSERT ... ON CONFLICT ... RETURNING attempts` correctly produced rate-limit counts 1 and 2 in successive calls. **Caveat:** three `RETURNING` statements bundled into one `wrangler d1 execute --command` hit a local `SQLITE_BUSY` error; each statement succeeded when invoked separately. This is CLI/local SQL evidence, **not** a deployed Worker or an end-to-end login test. Actual Worker D1 `.first()` integration, GitHub redirect/cookies, revocation and quota-failure handling remain gates.
+Using local Wrangler **4.46.0** on 2026-10-25, all seven schema statements succeeded. A one-time `DELETE ... RETURNING verifier` returned the verifier on the first call and zero rows on replay. A separate local `INSERT ... ON CONFLICT ... RETURNING attempts` correctly produced rate-limit counts 1 and 2 in successive calls. The local Worker + D1 smoke returned **HTTP 200** with `ok:true` for PKCE redirect parameters, single-use state, session issuance/revocation, cross-origin POST denial, exact numeric GitHub ID denial and fixed-window rate-limit/reset, using only mocked GitHub HTTP responses. **Caveat:** three `RETURNING` statements bundled into one `wrangler d1 execute --command` hit a local `SQLITE_BUSY` error; each statement succeeded when invoked separately, and the full local Worker D1 flow passed. This remains **local simulated-provider testing, not a hosted Worker or real GitHub browser login**. Live callback/cookies, free-plan quota-failure behavior and production D1 still require verification.
 
 **Credential handoff:** store the generated `GITHUB_CLIENT_SECRET` only in your private password manager until a separately approved isolated preview is ready. `wrangler secret put` can deploy a Worker immediately; do **not** run it as a harmless preparatory step. GitHub Actions secrets do not automatically become Cloudflare Worker runtime secrets.
 
