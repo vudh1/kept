@@ -22,6 +22,8 @@ export class HouseholdAccess {
     const entry=await this.state.storage.get(key);
     const epoch=await this.state.storage.get("epoch")||1;
     if(!entry||entry.epoch!==epoch||entry.expires<Date.now())return null;
+    // Active household devices renew their 180-day session without another PIN.
+    if(entry.expires-Date.now()<150*86400000){entry.expires=Date.now()+180*86400000;await this.state.storage.put(key,entry);}
     return {key,entry};
   }
   async issue() {
