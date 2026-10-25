@@ -44,13 +44,14 @@ Configure these **GitHub Actions secrets privately**, never in source or logs:
 - `KEPT_FRIDAY_ADMIN_EMAILS`: JSON array of 1–10 specific approved email
   addresses, e.g. `["owner@example.com"]` (illustrative, not a real user).
 - `CLOUDFLARE_ACCOUNT_ID`: existing account ID.
-- `CLOUDFLARE_API_TOKEN`: existing Kept Worker deploy token; requires
-  Workers script read/write for deployment and script discovery.
-- `KEPT_FRIDAY_ACCESS_TOKEN` (preferred): dedicated token with **Access:
-  Apps and Policies Edit** for this account. If absent, the workflow tries
-  the existing deployment token. If that token lacks Access permission and
-  returns 401/403, **stop and ask for a narrowly scoped token**; do not expand
-  an unrelated token's permission.
+- `CLOUDFLARE_API_TOKEN`: existing Kept Worker deploy token; used **only**
+  to deploy the isolated Worker and inject its private secret.
+- `KEPT_FRIDAY_ACCESS_TOKEN` (required): dedicated account-scoped token with
+  **Access: Apps and Policies Edit** and **Workers Scripts Read**. The workflow
+  uses this token for both read-only Worker-ID discovery and Access app
+  creation. It **does not fall back** to the unrelated Worker deploy token.
+  If either discovery or creation returns 401/403, stop and review the
+  permission with the owner; never broaden an unrelated token.
 
 Prerequisite: Cloudflare Zero Trust is enabled, and an appropriate sign-in
 method (such as One-time PIN) has been configured for the allowed emails.
