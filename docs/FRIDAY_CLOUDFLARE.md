@@ -3,6 +3,14 @@
 **Owner:** Kept. **Purpose:** optional, permission-scoped reminders for Vela.
 **Data status:** No household summaries are published or readable by Vela.
 
+## Cardless decision — October 25, 2026
+
+The owner selected FRIDAY's [no-payment-information policy](https://github.com/vudh1/friday/blob/main/docs/COST_POLICY.md). Cloudflare Zero Trust Free requires a billing profile, so **do not finish that enrollment** for FRIDAY. The old Access application creation failed HTTP 403 on discovery; no Access application has been verified.
+
+The separate `kept-friday-admin` Worker was previously deployed with an exact-email secret, but it requires `ctx.access`, has no data API or D1 binding, and **fails closed without Access**. Its automatic deployment workflow is now retired, and manual invocation will stop before any Cloudflare mutation. The existing `kept-sync` Worker remains unchanged. A no-card, reviewed identity replacement is tracked in [FRIDAY issue #13](https://github.com/vudh1/friday/issues/13). Do not use the old Access token as an authentication workaround.
+
+**Billing visibility:** neither GitHub source nor tests can prove actual provider charges or existing payment-method status. No new FRIDAY billing enrollment is authorized.
+
 ## Empty D1 database — provisioned, not connected
 
 The [provisioning workflow](../.github/workflows/provision-friday-d1.yml)
@@ -25,13 +33,13 @@ and free-plan counters; no paid upgrade is part of this plan.
 
 ## Isolated Access administrator Worker — independent from sync
 
-The [Access deployment workflow](../.github/workflows/deploy-friday-access.yml)
-validates Kept, validates the private allowlist, deploys the dedicated
-`kept-friday-admin` Worker, and attempts to create a Cloudflare Access
-self-hosted application **only** for that Worker's immutable ID. The policy
-has an allow rule for explicit individual email addresses and a one-hour
-session. No broad email-domain, everyone, service-token bypass or general
-Workers policy is permitted.
+The historical [Access workflow](../.github/workflows/deploy-friday-access.yml)
+previously validated Kept and deployed the dedicated `kept-friday-admin`
+Worker. Access policy creation **never succeeded**. That workflow is now
+retired under the cardless policy and cannot deploy or configure Cloudflare.
+The intended policy (not deployed) restricted one immutable Worker ID to
+named approved emails and a one-hour session; no broad email-domain,
+everyone, service-token bypass or all-Workers policy was authorized.
 
 The administrator Worker currently exposes **only** `GET /health`, returning
 `sharingEnabled: false` after valid Cloudflare Access identity. It checks
@@ -39,7 +47,9 @@ The administrator Worker currently exposes **only** `GET /health`, returning
 403 otherwise. It has **no D1 binding** and no household-data APIs. Deploying
 it does **not** enable Kept-to-Vela sharing.
 
-Configure these **GitHub Actions secrets privately**, never in source or logs:
+**Historical, inactive setup:** these were used for the attempted Access stage.
+Do not create new billing credentials or retry Access under the cardless policy.
+Secrets belong only in private GitHub Actions storage, never in source or logs:
 
 - `KEPT_FRIDAY_ADMIN_EMAILS`: JSON array of 1–10 specific approved email
   addresses, e.g. `["owner@example.com"]` (illustrative, not a real user).
