@@ -1,7 +1,7 @@
 name: Browser smoke · Kept appliance flow
 on:
   push:
-    branches: [fix/real-browser-appliance-e2e]
+    branches: [main, fix/real-browser-appliance-e2e]
   pull_request:
     paths:
       - app.js
@@ -35,6 +35,7 @@ jobs:
           python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/kept-http.log 2>&1 &
           KEPT_TEST_URL=http://127.0.0.1:4173/ node tests/browser-smoke.mjs
       - name: Test currently published production website
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           KEPT_TEST_URL: https://vudh1.github.io/kept/
         run: node tests/browser-smoke.mjs
