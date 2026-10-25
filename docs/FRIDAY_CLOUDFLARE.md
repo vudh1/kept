@@ -3,56 +3,88 @@
 **Owner:** Kept. **Purpose:** optional, permission-scoped reminders for Vela.
 **Data status:** No household summaries are published or readable by Vela.
 
-## Empty D1 database
+## Empty D1 database — provisioned, not connected
 
 The [provisioning workflow](../.github/workflows/provision-friday-d1.yml)
 checks for an exact-name `kept-friday-reminders` D1 database and creates one
-if absent. It runs when that workflow is first merged to `main`, and can be
-manually rerun. Creation is idempotent; the script sends **only** a database
-name and disables read replicas. It does **not** add a Worker binding, deploy
-an API, create tables, upload reminders or change Kept's encrypted sync.
+if absent. GitHub Actions run [#40190828799](https://github.com/vudh1/kept/actions/runs/40190828799), attempt 2, confirmed creation on October 25, 2026. It is **empty**:
+no Worker binding, tables, API, reminder upload or change to encrypted sync.
 
-Use the Kept repository's private GitHub Actions secrets:
+Required private GitHub Actions secrets:
 
-- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID.
-- `KEPT_FRIDAY_D1_TOKEN` (preferred): a dedicated account-scoped token with
-  **D1 Read and D1 Write** only. If not configured, the workflow tries the
-  already configured `CLOUDFLARE_API_TOKEN`; it must independently have
-  D1 permissions to succeed. **Do not broaden** an existing app deployment
-  token just to bypass a 403. Do not paste any token into issues.
+- `CLOUDFLARE_ACCOUNT_ID`: account ID.
+- `KEPT_FRIDAY_D1_TOKEN`: dedicated account-scoped token with **D1 Read and
+  D1 Write**. The provisioning workflow falls back to the existing
+  `CLOUDFLARE_API_TOKEN` if this secret is absent; do not broaden permissions
+  just to bypass a 403.
 
-If provisioning fails with HTTP 403, **stop**. Update a narrowly scoped token
-through GitHub Actions secrets or configure the database through the account
-dashboard with owner authorization. Do not bypass a permission failure. Use
-Cloudflare's [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)
-and free-plan counters; no paid upgrade is part of this workflow.
+If provisioning fails with HTTP 401/403, **stop** and obtain the narrowly
+scoped token from the owner. Do not put credentials in issues. See
+[Cloudflare D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)
+and free-plan counters; no paid upgrade is part of this plan.
 
-## Cloudflare Access admin login — not enabled yet
+## Isolated Access administrator Worker — independent from sync
 
-Plan to use Cloudflare Access **One-time PIN** for only named, approved
-household administrators. The owner must provide the exact authorized email
-addresses privately through Cloudflare; never store them in this public
-repository, workflow inputs or build logs.
+The [Access deployment workflow](../.github/workflows/deploy-friday-access.yml)
+validates Kept, validates the private allowlist, deploys the dedicated
+`kept-friday-admin` Worker, and attempts to create a Cloudflare Access
+self-hosted application **only** for that Worker's immutable ID. The policy
+has an allow rule for explicit individual email addresses and a one-hour
+session. No broad email-domain, everyone, service-token bypass or general
+Workers policy is permitted.
 
-**Do not protect the existing `kept-sync` Worker as a whole.** That would
-break its cross-origin encrypted sync clients. A future, isolated Kept sharing
-Worker will have Access protection for its administrative route(s), and
-separate per-TV-device, per-profile, revocable credentials for read-only
-reminders. Merely possessing a Vela remote PIN or Kept sync token must never
-grant cross-app read access.
+The administrator Worker currently exposes **only** `GET /health`, returning
+`sharingEnabled: false` after valid Cloudflare Access identity. It checks
+`ctx.access.getIdentity()` against the same named-email allowlist and returns
+403 otherwise. It has **no D1 binding** and no household-data APIs. Deploying
+it does **not** enable Kept-to-Vela sharing.
 
-Before enabling Access or a sharing Worker:
+Configure these **GitHub Actions secrets privately**, never in source or logs:
 
-1. Enable/verify Cloudflare Zero Trust and choose approved admin addresses.
-2. Register the isolated Worker host/admin routes only; fail closed to all
-   other users and validate `ctx.access` on every admin request.
-3. Define short-lived device pairing, key rotation, grant expiry and server
-   revocation; no bearer tokens in URLs.
-4. Bind D1 only to the reviewed sharing Worker, run migrations, enforce TTL
-   and prohibit broad listing of household/private state.
-5. Test unauthorized access, expired grants, offline protected display,
-   profile switch, caching, rate limits and rollback on actual devices.
+- `KEPT_FRIDAY_ADMIN_EMAILS`: JSON array of 1–10 specific approved email
+  addresses, e.g. `["owner@example.com"]` (illustrative, not a real user).
+- `CLOUDFLARE_ACCOUNT_ID`: existing account ID.
+- `CLOUDFLARE_API_TOKEN`: existing Kept Worker deploy token; requires
+  Workers script read/write for deployment and script discovery.
+- `KEPT_FRIDAY_ACCESS_TOKEN` (preferred): dedicated token with **Access:
+  Apps and Policies Edit** for this account. If absent, the workflow tries
+  the existing deployment token. If that token lacks Access permission and
+  returns 401/403, **stop and ask for a narrowly scoped token**; do not expand
+  an unrelated token's permission.
 
-Current `projectFridayReminders` in Kept remains a **local-only helper**
-until this acceptance list and the FRIDAY [ADR 0001](https://github.com/vudh1/friday/blob/main/docs/DECISIONS/0001-kept-reminder-consent.md)
-are satisfied.
+Prerequisite: Cloudflare Zero Trust is enabled, and an appropriate sign-in
+method (such as One-time PIN) has been configured for the allowed emails.
+Creating a policy does not configure an identity provider or grant access
+to any unspecified emails.
+
+The workflow deliberately stops if an Access application of the same name
+already exists: a human must verify its effective destination and policy
+before any future changes. Do not silently replace a potentially weaker
+policy. Verify the live Access application after the first deployment.
+
+**Do not protect the existing `kept-sync` Worker.** That would break its
+cross-origin, ciphertext-only client sync. Do not use its shared sync token,
+browser encryption passphrase, Vela remote PIN or a public calendar link as
+a cross-app identity.
+
+## Not yet implemented: Vela device-specific reader access
+
+Before any data is shared:
+
+1. Design a minimal explicit-consent projection of selected reminders that
+   does not require publishing decrypted Kept state by default.
+2. Implement a **separate read-only Vela device/profile grant**, short-lived
+   pairing, key rotation, expiry and server-side revocation. Administrator
+   Cloudflare Access email login is **not** a TV/device credential.
+3. Scope reads to explicitly selected reminders only; encrypt data in transit
+   and at rest, prohibit broad listing and keep bearer tokens out of URLs.
+4. Bind D1 to the future reviewed sharing service, apply migrations/TTLs,
+   and add rate limits and audit behavior without storing private content in
+   logs, GitHub or FRIDAY issues.
+5. Test unauthenticated access, revoked/expired grants, profile switch,
+   hidden display by default, offline failure, timezone/DST, caching and
+   rollback on the actual Vela TV.
+
+`projectFridayReminders` in Kept is still a **local-only helper** until the
+FRIDAY [ADR 0001](https://github.com/vudh1/friday/blob/main/docs/DECISIONS/0001-kept-reminder-consent.md)
+and these acceptance conditions are satisfied.
