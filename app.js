@@ -1,5 +1,5 @@
 /** Kept PWA: local-first UI, private device storage, opt-in encrypted cloud sync. */
-import { CATALOG, catalogItem } from "./lib/catalog.js";
+import { CATALOG, catalogItem, GENERAL_REFERENCES } from "./lib/catalog.js";
 import { todayLocal, upcomingTasks, status, formatDate, calendarFile } from "./lib/schedules.js";
 import { readLocal, writeLocal, blankState, mergeState, touch, uid, SETTINGS_KEY } from "./lib/store.js";
 import { syncOnce, researchAppliance, askAssistant } from "./lib/sync.js";
@@ -80,13 +80,13 @@ async function performSync(showToast = true) {
 }
 function visibleAppliances() { return state.appliances.filter(a => !a.deleted); }
 function visibleShopping() { return state.shopping.filter(x => !x.deleted); }
-function taskCount() { return upcomingTasks(state).filter(t => ["overdue","due","soon","unscheduled"].includes(t.due.kind)).length; }
+function taskCount() { return upcomingTasks(state).filter(t => ["overdue","due","soon"].includes(t.due.kind)).length; }
 function taskCard(task) {
   const a = visibleAppliances().find(x => x.id === task.applianceId);
   return `<div class="card glass"><div class="card-row"><div class="icon-tile">${iconFor(a?.category)}</div><div class="card-main"><div class="card-title">${html(task.title)}</div><div class="card-description">${html(a?.name || "Home")} · ${html(formatDate(task.due.date))}</div></div><span class="pill ${task.due.kind}">${html(task.due.label)}</span></div><div class="action-row"><button class="btn small secondary" data-action="complete" data-id="${html(task.id)}">Mark done</button><button class="btn small secondary" data-action="edit-task" data-id="${html(task.id)}">Edit schedule</button></div></div>`;
 }
 function iconFor(category) {
-  const map = { dishwasher:"◈",refrigerator:"▣",washer:"◉",dryer:"✺",hvac:"❋","water-heater":"♨",irrigation:"◌","smoke-alarm":"◇","air-purifier":"✳",vacuum:"✧",range:"♨","coffee-maker":"☕","range-hood":"≋","garage-door":"▤","water-filter":"◍",other:"⌂" };
+  const map = { dishwasher:"◈",refrigerator:"▣",washer:"◉",dryer:"✺",hvac:"❋","water-heater":"♨",irrigation:"◌","smoke-alarm":"◇","air-purifier":"✳",vacuum:"✧",range:"♨","coffee-maker":"☕","range-hood":"≋","garage-door":"▤","water-filter":"◍",microwave:"▧",freezer:"❄","garbage-disposal":"♻","toaster-oven":"♨","electric-kettle":"♨","robot-vacuum":"◎",humidifier:"◌",dehumidifier:"◍","bathroom-fan":"✺","ceiling-fan":"✺","sump-pump":"◈","water-softener":"◍",thermostat:"◉","security-camera":"◇","window-ac":"❄","leak-sensor":"◈",other:"⌂" };
   return map[category] || "⌂";
 }
 function empty(title, detail, action, label) {
@@ -94,7 +94,8 @@ function empty(title, detail, action, label) {
 }
 function renderToday() {
   const all = upcomingTasks(state);
-  const important = all.filter(t => ["overdue","due","soon","unscheduled"].includes(t.due.kind));
+  const important = all.filter(t => ["overdue","due","soon"].includes(t.due.kind));
+  const needsDates = all.filter(t => t.due.kind === "unscheduled").length;
   const open = visibleShopping().filter(i => !i.done);
   const hour = new Date().getHours();
   const greeting = hour < 11 ? "Good morning." : hour < 17 ? "Good afternoon." : "Good evening.";
@@ -103,6 +104,7 @@ function renderToday() {
     <div class="grid-two"><div class="metric glass"><div class="metric-icon">⌂</div><div class="metric-number">${important.length}</div><div class="metric-caption">Maintenance due soon</div></div><div class="metric glass"><div class="metric-icon">♧</div><div class="metric-number">${open.length}</div><div class="metric-caption">Things to pick up</div></div></div>
     <section class="section"><div class="section-head"><h2>Up next</h2><button class="link-button" data-nav="home">View home →</button></div>
     ${important.length ? important.slice(0, 4).map(taskCard).join("") : empty("You're all caught up",all.length ? "No maintenance is due in the next 14 days." : "Add an appliance to build your maintenance schedule.","add-appliance","Add an appliance")}</section>
+    ${needsDates ? `<p class="form-tip">${needsDates} maintenance schedule${needsDates===1?" needs":"s need"} a last-serviced date. Add one whenever you know it — no invented due dates.</p>` : ""}
     <section class="section"><div class="section-head"><h2>Shopping preview</h2><button class="link-button" data-nav="shop">Open list →</button></div>
     <div class="card glass">${open.length ? open.slice(0, 4).map(item => `<button class="check-row" data-action="toggle-item" data-id="${html(item.id)}"><span class="check-circle"></span><span class="check-content"><span class="check-title">${html(item.name)}</span><div class="check-subtitle">${html([item.quantity,item.store].filter(Boolean).join(" · "))}</div></span></button>`).join("") : `<p class="muted">Nothing on your shopping list right now.</p>`}</div></section>`;
 }
@@ -112,7 +114,7 @@ function renderHome() {
   if (selectedAppliance) return renderApplianceDetail(appliances.find(x => x.id === selectedAppliance));
   return `<section class="hero"><p class="eyebrow">Your home</p><h1>Everything in place.</h1><p class="subtitle">Appliances, maintenance plans, and a clear history of what's been done.</p></section>
     <section class="section" style="margin-top:10px"><div class="section-head"><h2>${appliances.length} appliances</h2><button class="btn small" data-action="add-appliance">+ Add new</button></div>
-    ${appliances.length ? appliances.map(a => { const tasks = state.tasks.filter(t => t.applianceId === a.id && !t.deleted); const next = tasks.map(t => status(t)).sort((x,y) => (x.date || "9999").localeCompare(y.date || "9999"))[0]; return `<button class="card glass" style="width:100%;color:inherit;text-align:left" data-action="view-appliance" data-id="${html(a.id)}"><div class="card-row"><div class="icon-tile">${iconFor(a.category)}</div><div class="card-main"><div class="card-title">${html(a.name)}</div><div class="card-description">${html([a.brand,a.model,a.location].filter(Boolean).join(" · ") || catalogItem(a.category).name)}</div></div>${next ? `<span class="pill ${next.kind}">${html(next.label)}</span>` : `<span class="chevron">›</span>`}</div></button>`; }).join("") : empty("Start with one appliance", "Choose an appliance type. Kept will suggest editable starter tasks; your model manual remains the authority.","add-appliance","Add your first appliance")}</section>`;
+    ${appliances.length ? appliances.map(a => { const tasks = state.tasks.filter(t => t.applianceId === a.id && !t.deleted); const next = tasks.map(t => status(t)).sort((x,y) => (x.date || "9999").localeCompare(y.date || "9999"))[0]; return `<button class="card glass" style="width:100%;color:inherit;text-align:left" data-action="view-appliance" data-id="${html(a.id)}"><div class="card-row"><div class="icon-tile">${iconFor(a.category)}</div><div class="card-main"><div class="card-title">${html(a.name)}</div><div class="card-description">${html([a.brand,a.model,a.location].filter(Boolean).join(" · ") || catalogItem(a.category).name)}</div></div>${next ? `<span class="pill ${next.kind}">${html(next.label)}</span>` : `<span class="chevron">›</span>`}</div></button>`; }).join("") : empty("Start with one appliance", "Choose a type for ready-made common maintenance tasks. Brand and model are optional.","add-appliance","Add your first appliance")}</section>`;
 }
 function renderApplianceDetail(a) {
   const tasks = state.tasks.filter(t => t.applianceId === a.id && !t.deleted).sort((x,y) => (status(x).date || "9999").localeCompare(status(y).date || "9999"));
@@ -139,7 +141,7 @@ function renderShop() {
 function renderAssist() {
   const appliances = visibleAppliances();
   const a = appliances.find(x=>x.id===selectedAppliance) || appliances[0];
-  return `<section class="hero"><p class="eyebrow">Kept intelligence</p><h1>A little extra help.</h1><p class="subtitle">Find model-specific maintenance tasks from a manual, or ask general household questions.</p></section>
+  return `<section class="hero"><p class="eyebrow">Kept intelligence</p><h1>A little extra help.</h1><p class="subtitle">Start with included maintenance suggestions. For optional model-specific guidance, research a manual or ask a question.</p></section>
     <section class="card glass"><div class="section-head"><h2>Research an appliance</h2><span class="pill">Gemini</span></div>
     <p class="form-tip">Requires your own Gemini API key on the Worker. A public manual URL is required; results are always drafts pending your review.</p>
     ${!appliances.length ? `<div class="note">First add an appliance on the Home tab.</div>` : `<form id="research-form"><div class="field"><label for="research-appliance">Appliance</label><select id="research-appliance" name="appliance" required>${appliances.map(x=>`<option value="${html(x.id)}" ${x.id===a?.id?"selected":""}>${html(x.name)} ${html(x.model || "")}</option>`).join("")}</select></div><div class="field"><label for="research-url">Official manual URL (HTTPS)</label><input id="research-url" class="input" type="url" name="manualUrl" value="${html(a?.manualUrl || "")}" placeholder="https://manufacturer.com/manual.pdf" required></div><button class="btn full" type="submit">✦ Research maintenance</button></form>`}
@@ -148,7 +150,7 @@ function renderAssist() {
 }
 function renderSettings() {
   return `<section class="hero"><p class="eyebrow">Preferences</p><h1>Make it yours.</h1><p class="subtitle">Your device works offline. Connect a Cloudflare Worker for encrypted two-person sync.</p></section>
-    <section class="card glass"><h2>Household connection</h2><p class="form-tip">Your passphrase encrypts data on this iPhone before it goes to GitHub. The backend never receives it. Keep the same passphrase on both devices.</p>
+    <section class="card glass"><h2>Household connection</h2><p class="form-tip">Your passphrase encrypts data on this iPhone before it goes to the publicly readable encrypted GitHub branch. The backend never receives it. Keep the same passphrase on both devices.</p>
     <form id="settings-form"><div class="field"><label for="device-name">Device name</label><input class="input" name="deviceName" id="device-name" value="${html(settings.deviceName)}" maxlength="40" required></div>
     <div class="field"><label for="backend-url">Cloudflare Worker URL</label><input class="input" type="url" name="backendUrl" id="backend-url" value="${html(settings.backendUrl)}" placeholder="https://kept-sync.example.workers.dev"></div>
     <div class="field"><label for="backend-token">Shared access key (this session only)</label><input class="input" type="password" name="token" id="backend-token" value="${html(credentials.token)}" placeholder="Worker SYNC_TOKEN" autocomplete="off"></div>
@@ -156,7 +158,7 @@ function renderSettings() {
     <p class="form-tip">The passphrase is held in memory only and must be reentered after the app restarts. Losing it means encrypted cloud history cannot be recovered.</p>
     <button class="btn full" type="submit">Save & sync now</button></form><div class="action-row"><button class="btn secondary small" data-action="sync">Sync again</button><button class="btn secondary small" data-action="disconnect">Lock this device</button></div></section>
     <section class="section card glass"><h2>Reminders & backup</h2><p class="form-tip">Due dates are shown inside Kept. Native background push delivery isn't active in this version; you can export the next occurrences to iPhone Calendar with one-day alerts.</p><div class="action-row"><button class="btn small secondary" data-action="export-calendar">Export calendar alerts</button><button class="btn small secondary" data-action="export-backup">Export JSON backup</button></div></section>
-    <section class="section card glass"><h2>Privacy first</h2><p class="audit">Local-only mode stores data in this browser's storage. Shared mode uploads only AES-GCM ciphertext to your private GitHub repository through your Worker. A device with the shared passphrase can decrypt it. AI research and chat are opt-in and only send the details shown on the AI screen. Avoid including sensitive personal information in AI prompts.</p></section>
+    <section class="section card glass"><h2>Privacy first</h2><p class="audit">Local-only mode stores data in this browser's storage. Shared mode uploads only AES-GCM ciphertext to your public GitHub runtime-state branch through your Worker. A device with the shared passphrase can decrypt it. AI research and chat are opt-in and only send the details shown on the AI screen. Avoid including sensitive personal information in AI prompts.</p></section>
     <section class="section"><button class="btn danger small" data-action="clear-local">Erase local device data</button></section>`;
 }
 function render() {
@@ -172,21 +174,26 @@ function openModal(content) {
   editor.querySelector("input:not([type=hidden]),select")?.focus();
 }
 function formActions() { return `<div class="form-actions"><button class="btn secondary" type="button" data-action="close-modal">Cancel</button><button class="btn" type="submit">Save</button></div>`; }
+function starterOptions(category) {
+  const def = catalogItem(category);
+  if (!def.tasks.length) return `<p class="form-tip">No common templates for this type. You can add your own tasks later.</p>`;
+  return `<fieldset class="starter-picker"><legend>Suggested maintenance · select what applies</legend><p class="form-tip">General guidance, not verified for your model. All tasks and intervals are editable.</p>${def.tasks.map((t,i) => `<label class="starter-task"><input type="checkbox" name="starterTask" value="${i}" checked><span><strong>${html(t.title)}</strong><small>Suggested check every ${t.days} days</small></span></label>`).join("")}</fieldset>`;
+}
 function applianceModal(a) {
   const item = a || {};
-  openModal(`<h2>${a?"Edit":"Add"} appliance</h2><p class="modal-intro">Start with a category, then add the exact model when you know it.</p><form id="appliance-form"><input type="hidden" name="id" value="${html(item.id || "")}">
-    <div class="field"><label>Appliance type</label><select name="category" required>${CATALOG.map(c=>`<option value="${c.id}" ${item.category===c.id?"selected":""}>${html(c.name)}</option>`).join("")}</select></div>
+  openModal(`<h2>${a?"Edit":"Add"} appliance</h2><p class="modal-intro">Choose a type and Kept suggests common maintenance. No model number needed.</p><form id="appliance-form"><input type="hidden" name="id" value="${html(item.id || "")}">
+    <div class="field"><label>Appliance type</label><select name="category" id="appliance-category" required>${CATALOG.map(c=>`<option value="${c.id}" ${item.category===c.id?"selected":""}>${html(c.name)}</option>`).join("")}</select></div>
     <div class="field"><label>Nickname</label><input class="input" name="name" placeholder="Kitchen dishwasher" maxlength="80" value="${html(item.name || "")}"></div>
-    <div class="two-inputs"><div class="field"><label>Brand</label><input class="input" name="brand" maxlength="60" placeholder="KitchenAid" value="${html(item.brand || "")}"></div><div class="field"><label>Model</label><input class="input" name="model" maxlength="100" placeholder="Model number" value="${html(item.model || "")}"></div></div>
+    <details class="advanced-details" ${a ? "open" : ""}><summary>Brand, model & manual (optional)</summary><div class="two-inputs"><div class="field"><label>Brand</label><input class="input" name="brand" maxlength="60" placeholder="KitchenAid" value="${html(item.brand || "")}"></div><div class="field"><label>Model</label><input class="input" name="model" maxlength="100" placeholder="Model number" value="${html(item.model || "")}"></div></div>
     <div class="field"><label>Room / location</label><input class="input" name="location" maxlength="60" placeholder="Kitchen" value="${html(item.location || "")}"></div>
-    <div class="field"><label>Official manual URL (optional)</label><input type="url" class="input" name="manualUrl" placeholder="https://..." value="${html(item.manualUrl || "")}"></div>
-    ${a ? "" : `<div class="field"><label>When were the suggested tasks last done?</label><input class="input" type="date" name="lastDone" max="${todayLocal()}" value=""></div><p class="form-tip">Starter tasks are general suggestions, not manufacturer instructions. Review each schedule for your exact model.</p>`}
+    <div class="field"><label>Official manual URL (optional)</label><input type="url" class="input" name="manualUrl" placeholder="https://..." value="${html(item.manualUrl || "")}"></div></details>
+    ${a ? "" : `<div class="field"><label>Last maintained (optional, for a first due date)</label><input class="input" type="date" name="lastDone" max="${todayLocal()}" value=""></div><p class="form-tip">Leave blank if you do not know. Kept will not invent a due date.</p><div id="starter-options">${starterOptions(item.category || CATALOG[0].id)}</div>`}
     ${formActions()}</form>`);
 }
 function taskModal(task, applianceId) {
   const t = task || {};
   const appliances = visibleAppliances();
-  openModal(`<h2>${task ? "Edit" : "New"} maintenance task</h2><p class="modal-intro">Keep every recurring task simple and clear.</p><form id="task-form"><input type="hidden" name="id" value="${html(t.id || "")}"><div class="field"><label>Appliance</label><select name="applianceId" required>${appliances.map(a=>`<option value="${html(a.id)}" ${(t.applianceId || applianceId) === a.id ? "selected":""}>${html(a.name)}</option>`).join("")}</select></div><div class="field"><label>Maintenance task</label><input class="input" name="title" maxlength="120" value="${html(t.title || "")}" placeholder="Replace water filter" required></div><div class="two-inputs"><div class="field"><label>Repeat every (days)</label><input class="input" name="intervalDays" type="number" min="1" max="3650" value="${html(t.intervalDays || 30)}" required></div><div class="field"><label>Last performed</label><input class="input" name="lastDone" type="date" value="${html(t.lastDone || "")}" max="${todayLocal()}" required></div></div><div class="field"><label>Instructions / notes</label><textarea name="instructions" maxlength="1000">${html(t.instructions || "")}</textarea></div>${t.sourceUrl ? `<p class="form-tip">Source: <a href="${html(t.sourceUrl)}" target="_blank" rel="noopener noreferrer">Open reference ↗</a></p>` : ""}${formActions()}</form>${task ? `<button class="btn danger small" data-action="delete-task" data-id="${html(t.id)}">Remove this task</button>` : ""}`);
+  openModal(`<h2>${task ? "Edit" : "New"} maintenance task</h2><p class="modal-intro">Keep every recurring task simple and clear.</p><form id="task-form"><input type="hidden" name="id" value="${html(t.id || "")}"><div class="field"><label>Appliance</label><select name="applianceId" required>${appliances.map(a=>`<option value="${html(a.id)}" ${(t.applianceId || applianceId) === a.id ? "selected":""}>${html(a.name)}</option>`).join("")}</select></div><div class="field"><label>Maintenance task</label><input class="input" name="title" maxlength="120" value="${html(t.title || "")}" placeholder="Replace water filter" required></div><div class="two-inputs"><div class="field"><label>Repeat every (days)</label><input class="input" name="intervalDays" type="number" min="1" max="3650" value="${html(t.intervalDays || 30)}" required></div><div class="field"><label>Last performed</label><input class="input" name="lastDone" type="date" value="${html(t.lastDone || "")}" max="${todayLocal()}"></div></div><div class="field"><label>Instructions / notes</label><textarea name="instructions" maxlength="1000">${html(t.instructions || "")}</textarea></div>${/^https:\/\//i.test(t.sourceUrl || "") ? `<p class="form-tip">General reference (verify for your model): <a href="${html(t.sourceUrl)}" target="_blank" rel="noopener noreferrer">Open guidance ↗</a></p>` : ""}${formActions()}</form>${task ? `<button class="btn danger small" data-action="delete-task" data-id="${html(t.id)}">Remove this task</button>` : ""}`);
 }
 function itemModal(item) {
   const i = item || {};
@@ -248,6 +255,12 @@ document.addEventListener("click", async event => {
     case "discard-ai": aiDraft=[];render();break;
   }
 });
+document.addEventListener("change", event => {
+  if (event.target.id === "appliance-category") {
+    const list = document.querySelector("#starter-options");
+    if (list) list.innerHTML = starterOptions(event.target.value);
+  }
+});
 document.addEventListener("submit", async event => {
   const form=event.target;
   if (!["quick-add","appliance-form","task-form","item-form","settings-form","research-form","chat-form"].includes(form.id)) return;
@@ -262,7 +275,8 @@ document.addEventListener("submit", async event => {
     else {
       const applianceId=uid();
       state.appliances.push(touch({id:applianceId,...attrs},settings.deviceId));
-      for(const t of def.tasks) state.tasks.push(touch({id:uid(),applianceId,title:t.title,intervalDays:t.days,lastDone:s("lastDone"),instructions:t.notes,sourceType:"starter",sourceUrl:""},settings.deviceId));
+      const enabled = new Set(f.getAll("starterTask").map(Number));
+      for(const [i,t] of def.tasks.entries()) if(enabled.has(i)) state.tasks.push(touch({id:uid(),applianceId,title:t.title,intervalDays:t.days,lastDone:s("lastDone"),instructions:t.notes,sourceType:"starter",sourceUrl:t.sourceUrl || GENERAL_REFERENCES[category] || ""},settings.deviceId));
       selectedAppliance=applianceId;
     }
     tab="home";editor.close();save();notify(id?"Appliance updated":"Appliance and starter tasks added");

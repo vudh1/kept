@@ -125,3 +125,15 @@ textarea { min-height: 95px; resize: vertical; }
 @media (min-width: 700px) { .app-shell { padding-inline: 32px; } .metric { min-height: 164px; padding: 22px; } }
 @media (max-width: 365px) { .app-shell { padding-inline: 13px; } .nav-item { min-width: 55px; padding-inline: 8px; } .metric { padding: 13px; } .connection-pill { font-size: .68rem; } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { transition: none !important; scroll-behavior: auto !important; } }
+
+/* Category-first maintenance templates: compact, readable, touch-friendly. */
+.starter-picker { margin: 16px 0 8px; padding: 12px; border: 1px solid var(--stroke-strong); border-radius: 14px; background: rgba(92,134,178,.08); }
+.starter-picker legend { font-size: .86rem; font-weight: 700; color: var(--text); padding: 0 6px; }
+.starter-task { display: flex; align-items: start; gap: 12px; padding: 11px 2px; min-height: 48px; border-top: 1px solid var(--stroke); font-size: .9rem; font-weight: 500; }
+.starter-task input { width: 19px; height: 19px; margin: 1px 0 0; flex: 0 0 auto; accent-color: #81c8f7; }
+.starter-task span { display: grid; gap: 4px; }
+.starter-task strong { color: var(--text); font-weight: 600; }
+.starter-task small { color: var(--muted); font-size: .75rem; }
+.advanced-details { margin: 14px 0; border: 1px solid var(--stroke); padding: 12px; border-radius: 12px; background: rgba(100,138,182,.08); }
+.advanced-details summary { cursor: pointer; color: #bfdeef; font-size: .84rem; font-weight: 600; min-height: 32px; padding-top: 5px; }
+.advanced-details[open] summary { margin-bottom: 9px; }
