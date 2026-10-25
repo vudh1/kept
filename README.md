@@ -96,3 +96,7 @@ You may edit `GEMINI_MODEL` and `GROQ_MODEL` in `worker/wrangler.toml` to an ava
 Kept provides an offline category-first baseline without calling any AI service. Existing appliance schedules are not silently rewritten when the built-in catalog changes. Review source links, disable inapplicable tasks, and adjust intervals according to your manual and household usage. No FRIDAY integration is added by this catalog enhancement.
 
 Kept is designed to give you a dependable household app without requiring an AI model for every reminder or task. **Manufacturer documentation takes priority** over starter templates and model-generated drafts.
+
+## License and attribution
+
+Original Kept code, documentation and starter maintenance templates authored for this project are licensed under the [Apache License 2.0](LICENSE) (`Apache-2.0`). Copyright © 2026 Duong Vu and contributors. Third-party libraries, manufacturers' manuals, brand logos, externally sourced information and user household records are governed by their own rights and are **not** relicensed by Kept. The Kept name and branding do not carry a trademark grant; see [FRIDAY's licensing policy](https://github.com/vudh1/friday/blob/main/docs/LICENSING.md).
