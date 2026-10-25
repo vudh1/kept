@@ -284,11 +284,14 @@ document.addEventListener("change", event => {
 });
 document.addEventListener("submit", async event => {
   const form=event.target;
-  if (!["quick-add","appliance-form","task-form","item-form","settings-form","research-form","chat-form"].includes(form.id)) return;
+  // Named inputs (e.g. name="id") can shadow HTMLFormElement.id in browsers.
+  // Read the attribute directly so Save never falls through to a native page reload.
+  const formId = form.getAttribute("id");
+  if (!["quick-add","appliance-form","task-form","item-form","settings-form","research-form","chat-form"].includes(formId)) return;
   event.preventDefault();
   const f=new FormData(form), s=key=>String(f.get(key)||"").trim();
-  if (form.id==="quick-add") { if (s("name")) add("shopping",{name:s("name"),quantity:"",store:"",notes:"",done:false}); form.reset(); }
-  if (form.id==="appliance-form") {
+  if (formId==="quick-add") { if (s("name")) add("shopping",{name:s("name"),quantity:"",store:"",notes:"",done:false}); form.reset(); }
+  if (formId==="appliance-form") {
     const category=s("category"), def=catalogItem(category);
     const attrs={category,name:s("name")||def.name,brand:s("brand"),model:s("model"),location:s("location")||def.location,manualUrl:s("manualUrl")};
     const id=s("id");
@@ -302,18 +305,18 @@ document.addEventListener("submit", async event => {
     }
     tab="home";editor.close();save();notify(id?"Appliance updated":"Appliance and starter tasks added");
   }
-  if(form.id==="task-form") {
+  if(formId==="task-form") {
     const attrs={applianceId:s("applianceId"),title:s("title"),intervalDays:Number(s("intervalDays")),lastDone:s("lastDone"),instructions:s("instructions")};
     if(!Number.isInteger(attrs.intervalDays)||attrs.intervalDays<1||attrs.intervalDays>3650) return notify("Choose an interval of 1 to 3650 days.");
     if(s("id")) mutate("tasks",s("id"),attrs); else add("tasks",{...attrs,sourceType:"custom",sourceUrl:""});
     editor.close();notify("Maintenance schedule saved");
   }
-  if(form.id==="item-form") {
+  if(formId==="item-form") {
     const attrs={name:s("name"),quantity:s("quantity"),store:s("store"),notes:s("notes")};
     if(s("id")) mutate("shopping",s("id"),attrs); else add("shopping",{...attrs,done:false});
     editor.close();notify("Shopping item saved");
   }
-  if(form.id==="settings-form") {
+  if(formId==="settings-form") {
     settings.deviceName=s("deviceName")||"My iPhone";
     settings.backendUrl=s("backendUrl").replace(/\/$/,"");
     if(settings.backendUrl && !settings.backendUrl.startsWith("https://") && !settings.backendUrl.startsWith("http://localhost")) return notify("Cloud backend must use HTTPS.");
@@ -323,7 +326,7 @@ document.addEventListener("submit", async event => {
     if(credentials.token) sessionStorage.setItem("kept.syncToken",credentials.token);
     render();await performSync();
   }
-  if(form.id==="research-form") {
+  if(formId==="research-form") {
     if(!canSync()) return notify("Connect the Worker and unlock the household in Settings first.");
     const a=visibleAppliances().find(x=>x.id===s("appliance"));
     if(!a) return;
@@ -336,7 +339,7 @@ document.addEventListener("submit", async event => {
       render();
     } catch(err) { notify(err.message); } finally {submit.disabled=false;submit.textContent="✦ Research maintenance";}
   }
-  if(form.id==="chat-form") {
+  if(formId==="chat-form") {
     const message=s("message");if(!message) return;
     const a=visibleAppliances().find(x=>x.id===selectedAppliance)||visibleAppliances()[0];
     chatMessages.push({type:"user",text:message});

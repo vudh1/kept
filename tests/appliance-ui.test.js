@@ -68,7 +68,7 @@ test("adding a washer opens a modal, saves the device, and renders its tasks", a
     assert.match(modalContent.innerHTML,/type="checkbox"/);
 
     const submit = listeners.get("submit");
-    await submit({target:{id:"appliance-form",fields:new Map([
+    await submit({target:{id:{ value: "" }, getAttribute(key) { return key === "id" ? "appliance-form" : null; },fields:new Map([
       ["category","washer"],["name","Laundry washer"],["brand",""],["model",""],
       ["location","Laundry"],["manualUrl",""],["lastDone",""],
       ["id",""],["starterTask",["0","1"]]
