@@ -13,4 +13,13 @@ GEMINI_MODEL = "gemini-2.5-flash"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # Configure these with wrangler secret put, NEVER in this file:
-# GITHUB_TOKEN, SYNC_TOKEN, GEMINI_API_KEY (optional), GROQ_API_KEY (optional)
+# GITHUB_TOKEN, KEPT_INITIAL_PIN, KEPT_PIN_PEPPER, GEMINI_API_KEY (optional), GROQ_API_KEY (optional)
+
+# SQLite Durable Object is available on Cloudflare Workers Free.
+[[durable_objects.bindings]]
+name = "HOUSEHOLD_AUTH"
+class_name = "HouseholdAccess"
+
+[[migrations]]
+tag = "pin-auth-v1"
+new_sqlite_classes = ["HouseholdAccess"]

@@ -1,21 +1,23 @@
 /** Kept PWA: local-first UI, private device storage, opt-in encrypted cloud sync. */
 import { CATALOG, catalogItem, GENERAL_REFERENCES } from "./lib/catalog.js";
 import { todayLocal, upcomingTasks, status, formatDate, calendarFile } from "./lib/schedules.js";
-import { readLocal, writeLocal, blankState, mergeState, touch, uid, SETTINGS_KEY } from "./lib/store.js";
-import { syncOnce, researchAppliance, askAssistant } from "./lib/sync.js";
+import { STORAGE_KEY, readLocal, blankState, mergeState, touch, uid, SETTINGS_KEY } from "./lib/store.js";
+import { deviceSession, rememberDevice, updateToken, readProtected, writeProtected, forgetDevice, suspendDevice } from "./lib/secure-device.js";
+import { syncOnce, researchAppliance, askAssistant, enrollDevice, verifyDevice, changeHouseholdPin, revokeDevice } from "./lib/sync.js";
 
 const $ = sel => document.querySelector(sel);
 const html = x => String(x ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
 const app = $("#app");
 const editor = $("#editor");
-let state = readLocal();
+let state = blankState();
+let session = null;
+let booting = true;
+let persistQueue = Promise.resolve();
 let settings;
 try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch { settings = {}; }
 settings.deviceId ||= uid();
 settings.deviceName ||= "My iPhone";
-settings.backendUrl ||= "";
 try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Browser storage may be unavailable; keep settings in memory. */ }
-let credentials = { token: sessionStorage.getItem("kept.syncToken") || "", passphrase: "" };
 let tab = "today";
 let selectedAppliance = null;
 let shopFilter = "All";
@@ -26,20 +28,16 @@ let needsResync = false;
 let aiDraft = [];
 let chatMessages = [{ type: "assistant", text: "Hi! I can help you understand maintenance and prepare a model-specific checklist. I won't make changes without your approval." }];
 
-function config() { return { baseUrl: settings.backendUrl.trim(), token: credentials.token, passphrase: credentials.passphrase }; }
-function canSync() { const c = config(); return Boolean(c.baseUrl && c.token && c.passphrase); }
+function config() { return session; }
+function canSync() { return Boolean(session?.token && session?.key); }
 function save({ sync = true } = {}) {
-  try {
-    writeLocal(state);
-  } catch {
-    // Keep the current session usable and clearly warn about lost durability.
-    render();
-    notify("This device could not save changes. Check Safari storage settings before closing Kept.");
-    return false;
-  }
+  // Only authenticated, encrypted IndexedDB writes. Never repopulate plaintext localStorage.
   render();
-  if (sync) queueSync();
-  return true;
+  persistQueue=persistQueue.then(()=>writeProtected(state,session)).then(()=>{
+    if(sync)queueSync();
+  }).catch(()=>{
+    notify("Changes could not be saved securely on this device.");
+  });
 }
 function mutate(collection, id, updates) {
   const index = state[collection].findIndex(x => x.id === id);
@@ -73,7 +71,7 @@ async function performSync(showToast = true) {
   try {
     const merged = await syncOnce(state, config());
     state = mergeState(state, merged);
-    writeLocal(state);
+    await writeProtected(state,session);
     $("#connection-pill").textContent = "Household synced";
     if (showToast) notify("Synced with your household");
     render();
@@ -160,25 +158,68 @@ function renderAssist() {
     ${aiDraft.length ? `<div class="soft-divider"></div><h3>Review AI suggestions</h3><p class="form-tip">AI drafts are not verified. Check intervals against your manual before adding.</p><div class="stack">${aiDraft.map((t,i)=>`<div class="note"><strong>${html(t.title)}</strong><br>${html(t.intervalDays || "?")} days · ${html(t.instructions || "")}<br><em>Source excerpt: ${html(t.evidence || "none")}</em></div>`).join("")}</div><div class="action-row"><button class="btn" data-action="accept-ai">Add reviewed tasks</button><button class="btn secondary" data-action="discard-ai">Discard</button></div>` : ""}</section>
     <section class="section"><div class="section-head"><h2>Ask Kept</h2><span class="pill">Groq</span></div><div class="card glass"><div class="chat-window" id="chat-window">${chatMessages.map(m=>`<div class="bubble ${m.type}">${html(m.text)}</div>`).join("")}</div><div class="soft-divider"></div><form id="chat-form" class="inline-form"><input class="input" name="message" maxlength="700" placeholder="Ask a home maintenance question" required aria-label="Ask Kept AI"><button class="btn" type="submit">Send</button></form><p class="form-tip">Only your question and selected appliance type/model are sent to Groq, not your shopping list or household history.</p></div></section>`;
 }
+function renderWelcome() {
+  if (booting) return '<section class="hero"><p class="eyebrow">kept.</p><h1>Opening your home…</h1><p class="subtitle">Checking this device securely.</p></section>';
+  return `<section class="hero access-hero"><div class="access-lock">⌂</div><p class="eyebrow">Welcome to kept.</p><h1>Home, handled.</h1><p class="subtitle">Enter your household PIN once to add this device. Your PIN is checked by Cloudflare, not the public website.</p></section>
+  <section class="card glass access-card"><form id="unlock-form" autocomplete="off"><div class="field"><label for="household-pin">Household PIN</label><input id="household-pin" class="input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{8,12}" minlength="8" maxlength="12" autocomplete="off" placeholder="8–12 digits" required></div><button class="btn full" type="submit">Unlock this device</button></form><p class="form-tip">First use requires internet. Trusted devices can keep using local maintenance and shopping records offline.</p></section>`;
+}
 function renderSettings() {
-  return `<section class="hero"><p class="eyebrow">Preferences</p><h1>Make it yours.</h1><p class="subtitle">Your device works offline. Connect a Cloudflare Worker for encrypted two-person sync.</p></section>
-    <section class="card glass"><h2>Household connection</h2><p class="form-tip">Your passphrase encrypts data on this iPhone before it goes to the publicly readable encrypted GitHub branch. The backend never receives it. Keep the same passphrase on both devices.</p>
-    <form id="settings-form"><div class="field"><label for="device-name">Device name</label><input class="input" name="deviceName" id="device-name" value="${html(settings.deviceName)}" maxlength="40" required></div>
-    <div class="field"><label for="backend-url">Cloudflare Worker URL</label><input class="input" type="url" name="backendUrl" id="backend-url" value="${html(settings.backendUrl)}" placeholder="https://kept-sync.example.workers.dev"></div>
-    <div class="field"><label for="backend-token">Shared access key (this session only)</label><input class="input" type="password" name="token" id="backend-token" value="${html(credentials.token)}" placeholder="Worker SYNC_TOKEN" autocomplete="off"></div>
-    <div class="field"><label for="household-passphrase">Household encryption passphrase (never sent)</label><input class="input" type="password" name="passphrase" id="household-passphrase" placeholder="12+ characters" autocomplete="off" minlength="12"></div>
-    <p class="form-tip">The passphrase is held in memory only and must be reentered after the app restarts. Losing it means encrypted cloud history cannot be recovered.</p>
-    <button class="btn full" type="submit">Save & sync now</button></form><div class="action-row"><button class="btn secondary small" data-action="sync">Sync again</button><button class="btn secondary small" data-action="disconnect">Lock this device</button></div></section>
-    <section class="section card glass"><h2>Reminders & backup</h2><p class="form-tip">Due dates are shown inside Kept. Native background push delivery isn't active in this version; you can export the next occurrences to iPhone Calendar with one-day alerts.</p><div class="action-row"><button class="btn small secondary" data-action="export-calendar">Export calendar alerts</button><button class="btn small secondary" data-action="export-backup">Export JSON backup</button></div></section>
-    <section class="section card glass"><h2>Privacy first</h2><p class="audit">Local-only mode stores data in this browser's storage. Shared mode uploads only AES-GCM ciphertext to your public GitHub runtime-state branch through your Worker. A device with the shared passphrase can decrypt it. AI research and chat are opt-in and only send the details shown on the AI screen. Avoid including sensitive personal information in AI prompts.</p></section>
-    <section class="section"><button class="btn danger small" data-action="clear-local">Erase local device data</button></section>`;
+  return `<section class="hero"><p class="eyebrow">Preferences</p><h1>Make it yours.</h1><p class="subtitle">Your household connection is configured automatically. No Cloudflare or GitHub API tokens belong on this screen.</p></section>
+    <section class="card glass"><h2>Household access</h2><p class="form-tip">This device is remembered. Kept keeps your local records encrypted, even when offline. Cloudflare verifies new devices before granting access.</p>
+    <div class="action-row"><button class="btn secondary small" data-action="sync">Sync household now</button><button class="btn secondary small" data-action="forget-device">Forget this device</button></div>
+    <div class="soft-divider"></div><h3>Change household PIN</h3><p class="form-tip">Changing the PIN revokes other devices. They must enter the new PIN to reconnect.</p>
+    <form id="change-pin-form" autocomplete="off"><div class="field"><label>Current PIN</label><input class="input" name="currentPin" type="password" inputmode="numeric" pattern="[0-9]{8,12}" minlength="8" maxlength="12" required autocomplete="off"></div>
+    <div class="field"><label>New PIN (8–12 digits)</label><input class="input" name="newPin" type="password" inputmode="numeric" pattern="[0-9]{8,12}" minlength="8" maxlength="12" required autocomplete="off"></div>
+    <button class="btn secondary" type="submit">Update PIN</button></form></section>
+    <section class="section card glass"><h2>Reminders & backup</h2><p class="form-tip">Due dates appear inside Kept. Background push is not active yet. Export the next occurrence to Calendar for an alert.</p>
+    <div class="action-row"><button class="btn small secondary" data-action="export-calendar">Export calendar alerts</button><button class="btn small secondary" data-action="export-backup">Export JSON backup</button></div></section>
+    <section class="section card glass"><h2>Privacy</h2><p class="audit">The public GitHub runtime-state branch holds only encrypted household snapshots. A separate random encryption key is issued after Cloudflare authorization and retained on trusted devices. Cloudflare manages that key, so this is not end-to-end encryption against Cloudflare. Keep exported JSON backups private.</p></section>`;
 }
 function render() {
+  if (!session) {
+    app.innerHTML=renderWelcome();
+    document.querySelector(".tabbar")?.setAttribute("hidden","");
+    document.querySelector("[data-nav=settings]")?.setAttribute("hidden","");
+    return;
+  }
+  document.querySelector(".tabbar")?.removeAttribute("hidden");
+  document.querySelector("[data-nav=settings]")?.removeAttribute("hidden");
   app.innerHTML = tab === "today" ? renderToday() : tab === "home" ? renderHome() : tab === "shop" ? renderShop() : tab === "assist" ? renderAssist() : renderSettings();
   document.querySelectorAll("[data-nav]").forEach(b => b.classList.toggle("active", b.dataset.nav === tab));
   const badge = $("#connection-pill");
-  if (!syncBusy && !canSync()) badge.textContent = settings.backendUrl ? "Locked · local" : "On this device";
+  if(badge && !syncBusy) badge.textContent="Trusted device";
   if ("setAppBadge" in navigator) navigator.setAppBadge(taskCount()).catch(()=>{});
+}
+async function activateDevice(active) {
+  // Fail closed: never mark this device unlocked before its encrypted vault
+  // has been successfully read and any legacy records durably migrated.
+  const encrypted=await readProtected();
+  const previous=readLocal();
+  const merged=mergeState(encrypted,previous);
+  await writeProtected(merged,active);
+  localStorage.removeItem(STORAGE_KEY);
+  state=merged;
+  session=active;
+  booting=false;render();
+  performSync(false);
+}
+async function restoreSession() {
+  try {
+    const previous=await deviceSession();
+    if(!previous?.token || !previous?.key)return;
+    try {
+      const verified=await verifyDevice(previous.token);
+      // A changed master key must never silently overwrite the local vault.
+      if(!verified?.key || !/^[a-f0-9]{64}$/.test(verified.key))throw new Error("Missing household key");
+      // The non-extractable key is persisted from the original enrollment.
+      // Never replace it silently when remote key state becomes inconsistent.
+    } catch(error) {
+      if(error.status===401){await suspendDevice();return;}
+      // When offline, existing trusted-device data remains accessible locally.
+    }
+    await activateDevice(previous);
+  }catch { /* Stay locked when IndexedDB is unavailable. */ }
+  finally {booting=false;render();}
 }
 function openModal(content) {
   $("#editor-content").innerHTML = content;
@@ -238,6 +279,7 @@ function download(filename, content, type) {
 
 // Event delegation keeps screens simple, works after every re-render.
 document.addEventListener("click", async event => {
+  if(!session)return;
   const nav = event.target.closest("[data-nav]");
   if (nav) { tab = nav.dataset.nav; if (nav.dataset.select) selectedAppliance = nav.dataset.select; window.scrollTo({top:0,behavior:"smooth"}); render(); return; }
   const btn = event.target.closest("[data-action]");
@@ -261,7 +303,12 @@ document.addEventListener("click", async event => {
     case "clear-purchased": { const completed=visibleShopping().filter(x=>x.done); if (!completed.length) return notify("No purchased items to clear."); if(confirm(`Remove ${completed.length} purchased items?`)) { for (const i of completed) state.shopping[state.shopping.indexOf(i)] = touch({...i,deleted:true}, settings.deviceId); save(); } break; }
     case "close-modal": editor.close(); break;
     case "sync": await performSync(); break;
-    case "disconnect": credentials={ token:"",passphrase:"" }; sessionStorage.removeItem("kept.syncToken"); render(); notify("Cloud sync locked for this session"); break;
+    case "forget-device": {
+      if(!confirm("Forget this device? Its encrypted local data will be erased; remote household records stay available on other devices."))break;
+      try {await revokeDevice(session.token);}
+      catch {notify("Cannot revoke this device while offline. Reconnect before forgetting it.");break;}
+      await forgetDevice();session=null;state=blankState();render();notify("Device forgotten. Enter your PIN to reconnect.");break;
+    }
     case "export-calendar": { const tasks=upcomingTasks(state); download("kept-maintenance.ics",calendarFile(tasks,visibleAppliances()),"text/calendar;charset=utf-8"); notify("Calendar export ready. Import it into your iPhone calendar."); break; }
     case "export-backup": download(`kept-backup-${todayLocal()}.json`,JSON.stringify(state,null,2),"application/json"); notify("Backup exported — store it securely. It contains unencrypted data."); break;
     case "clear-local": if (confirm("Permanently erase this device's Kept records? Your encrypted GitHub copy will remain untouched.")) { state=blankState(); writeLocal(state); selectedAppliance=null; render(); notify("Local data erased"); } break;
@@ -287,9 +334,33 @@ document.addEventListener("submit", async event => {
   // Named inputs (e.g. name="id") can shadow HTMLFormElement.id in browsers.
   // Read the attribute directly so Save never falls through to a native page reload.
   const formId = form.getAttribute("id");
-  if (!["quick-add","appliance-form","task-form","item-form","settings-form","research-form","chat-form"].includes(formId)) return;
+  if (!["unlock-form","change-pin-form","quick-add","appliance-form","task-form","item-form","research-form","chat-form"].includes(formId)) return;
   event.preventDefault();
   const f=new FormData(form), s=key=>String(f.get(key)||"").trim();
+  if(formId==="unlock-form"){
+    const button=form.querySelector('button[type="submit"]');
+    button.disabled=true;
+    try {
+      const enrolled=await enrollDevice(s("pin"));
+      const trusted=await rememberDevice(enrolled.token,enrolled.key);
+      await activateDevice(trusted);
+      notify("Welcome home — device remembered.");
+    } catch(error) {notify(error.message||"PIN verification unavailable.");}
+    finally {button.disabled=false;}
+    return;
+  }
+  if(formId==="change-pin-form"){
+    const button=form.querySelector('button[type="submit"]');
+    button.disabled=true;
+    try{
+      const updated=await changeHouseholdPin(session.token,s("currentPin"),s("newPin"));
+      session=await updateToken(updated.token);
+      form.reset();notify("PIN updated. Other devices must unlock again.");
+    }catch(error){notify(error.message||"Could not update PIN.");}
+    finally{button.disabled=false;}
+    return;
+  }
+
   if (formId==="quick-add") { if (s("name")) add("shopping",{name:s("name"),quantity:"",store:"",notes:"",done:false}); form.reset(); }
   if (formId==="appliance-form") {
     const category=s("category"), def=catalogItem(category);
@@ -316,18 +387,8 @@ document.addEventListener("submit", async event => {
     if(s("id")) mutate("shopping",s("id"),attrs); else add("shopping",{...attrs,done:false});
     editor.close();notify("Shopping item saved");
   }
-  if(formId==="settings-form") {
-    settings.deviceName=s("deviceName")||"My iPhone";
-    settings.backendUrl=s("backendUrl").replace(/\/$/,"");
-    if(settings.backendUrl && !settings.backendUrl.startsWith("https://") && !settings.backendUrl.startsWith("http://localhost")) return notify("Cloud backend must use HTTPS.");
-    localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));
-    credentials.token=s("token");
-    if(s("passphrase")) credentials.passphrase=s("passphrase");
-    if(credentials.token) sessionStorage.setItem("kept.syncToken",credentials.token);
-    render();await performSync();
-  }
   if(formId==="research-form") {
-    if(!canSync()) return notify("Connect the Worker and unlock the household in Settings first.");
+    if(!canSync()) return notify("Unlock your household first.");
     const a=visibleAppliances().find(x=>x.id===s("appliance"));
     if(!a) return;
     selectedAppliance=a.id;
@@ -355,4 +416,4 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden && canSync
 if("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
 setInterval(()=>{if(!document.hidden && canSync()) performSync(false);},60000);
 render();
-if(canSync())performSync(false);
+restoreSession();

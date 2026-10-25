@@ -1,87 +1,65 @@
-/** Node-level event-flow smoke test for the category-first appliance modal. */
+/** Auth is Cloudflare Durable Object state, not the browser PIN. */
 import test from "node:test";
 import assert from "node:assert/strict";
-
-test("adding a washer opens a modal, saves the device, and renders its tasks", async () => {
-  const listeners = new Map();
-  const db = new Map();
-  const storage = {
-    getItem(key) { return db.has(key) ? db.get(key) : null; },
-    setItem(key, value) { db.set(key, String(value)); },
-    removeItem(key) { db.delete(key); }
+import { HouseholdAccess } from "../worker/auth.js";
+const headers = {"Content-Type":"application/json"};
+const TEST_ENV = {KEPT_INITIAL_PIN:"83519462",KEPT_PIN_PEPPER:"unit-test-only-pepper-that-is-long-enough-0123456789"};
+function setup(){
+  const map=new Map();
+  const storage={
+    get:async k=>map.get(k),
+    put:async (k,v)=>{map.set(k,v);},
+    delete:async k=>{map.delete(k);}
   };
-  const page = { innerHTML: "" };
-  const badge = { textContent: "" };
-  const toast = { textContent: "", hidden: true };
-  const modal = {
-    open: false,
-    scrollTop: 10,
-    attributes: new Map(),
-    setAttribute(key,value) { this.attributes.set(key,value); },
-    showModal() { this.open = true; },
-    close() { this.open = false; },
-    focus() { this.focused = true; },
-    addEventListener() {},
-  };
-  const modalContent = { innerHTML: "" };
-  const nodes = {
-    "#app": page, "#editor": modal, "#toast": toast,
-    "#editor-content": modalContent, "#connection-pill": badge
-  };
-  const dom = {
-    querySelector(sel) { return nodes[sel] || null; },
-    querySelectorAll() { return []; },
-    addEventListener(event, callback) { listeners.set(event, callback); }
-  };
-  const originals = {
-    document: globalThis.document, localStorage: globalThis.localStorage,
-    sessionStorage: globalThis.sessionStorage, navigator: globalThis.navigator,
-    window: globalThis.window, location: globalThis.location,
-    FormData: globalThis.FormData, setInterval: globalThis.setInterval
-  };
-  const setGlobal = (name, value) => Object.defineProperty(globalThis,name,{ configurable:true, writable:true,value });
-  try {
-    setGlobal("document",dom);
-    setGlobal("localStorage",storage);
-    setGlobal("sessionStorage",storage);
-    setGlobal("navigator",{});
-    setGlobal("window",{addEventListener(){},scrollTo(){}});
-    setGlobal("location",{hash:""});
-    setGlobal("setInterval",()=>0);
-    setGlobal("FormData",class {
-      constructor(form) { this.fields = form.fields; }
-      get(name) { return this.fields.get(name) || null; }
-      getAll(name) { return this.fields.get(name) || []; }
-    });
-
-    await import("../app.js?appliance-modal-smoke-test");
-    assert.match(page.innerHTML,/Good (morning|afternoon|evening)/);
-    const click = listeners.get("click");
-    await click({target:{closest(sel) {return sel==="[data-nav]"?{dataset:{nav:"home"}}:null;}}});
-    assert.match(page.innerHTML,/Add new/);
-    await click({target:{closest(sel) {return sel==="[data-action]"?{dataset:{action:"add-appliance"}}:null;}}});
-    assert.equal(modal.open,true);
-    assert.equal(modal.focused,true);
-    assert.equal(modal.scrollTop,0);
-    assert.match(modalContent.innerHTML,/starter-options/);
-    assert.match(modalContent.innerHTML,/Suggested maintenance/);
-    assert.match(modalContent.innerHTML,/type="checkbox"/);
-
-    const submit = listeners.get("submit");
-    await submit({target:{id:{ value: "" }, getAttribute(key) { return key === "id" ? "appliance-form" : null; },fields:new Map([
-      ["category","washer"],["name","Laundry washer"],["brand",""],["model",""],
-      ["location","Laundry"],["manualUrl",""],["lastDone",""],
-      ["id",""],["starterTask",["0","1"]]
-    ])},preventDefault(){}});
-    assert.equal(modal.open,false);
-    assert.match(page.innerHTML,/Laundry washer/);
-    assert.match(page.innerHTML,/Clean washer tub and gasket/);
-    assert.match(page.innerHTML,/Inspect hoses for leaks or damage/);
-    const saved=JSON.parse(db.get("kept.household.v1"));
-    assert.equal(saved.appliances.length,1);
-    assert.equal(saved.tasks.length,2);
-    assert.equal(saved.tasks.every(t=>t.lastDone===""),true);
-  } finally {
-    for(const [name,value] of Object.entries(originals)) setGlobal(name,value);
-  }
+  const auth=new HouseholdAccess({storage},TEST_ENV);
+  const call=(path,data,token="")=>auth.fetch(new Request("https://kept-internal.invalid"+path,{
+    method:data===undefined?"GET":"POST",
+    headers:{...headers,...(token?{Authorization:"Bearer "+token}:{})},
+    ...(data===undefined?{}:{body:JSON.stringify(data)})
+  }));
+  return {auth,call,map};
+}
+test("PIN is checked on server; issued token is random and not the PIN",async()=>{
+  const {call,map}=setup();
+  const wrong=await call("/enroll",{pin:"00000000"});
+  assert.equal(wrong.status,401);
+  const ok=await call("/enroll",{pin:TEST_ENV.KEPT_INITIAL_PIN});
+  assert.equal(ok.status,200);
+  const data=await ok.json();
+  assert.match(data.token,/^[0-9a-f]{64}$/);
+  assert.match(data.key,/^[0-9a-f]{64}$/);
+  assert.notEqual(data.token,data.key);
+  assert.ok(!JSON.stringify([...map.values()]).includes(data.token));
+  assert.ok(!JSON.stringify([...map.values()]).includes(TEST_ENV.KEPT_INITIAL_PIN));
+  const valid=await call("/session",undefined,data.token);
+  assert.equal(valid.status,200);
+  assert.equal((await valid.json()).key,data.key);
+});
+test("five wrong PINs block correct PIN; concurrent requests share lockout",async()=>{
+  const {call}=setup();
+  const attempts=await Promise.all(Array.from({length:5},()=>call("/enroll",{pin:"00000000"})));
+  assert.deepEqual(attempts.map(x=>x.status),[401,401,401,401,429]);
+  assert.equal((await call("/enroll",{pin:TEST_ENV.KEPT_INITIAL_PIN})).status,429);
+});
+test("changing the PIN revokes all other device tokens and retains data key",async()=>{
+  const {call}=setup();
+  const a=await (await call("/enroll",{pin:TEST_ENV.KEPT_INITIAL_PIN})).json();
+  const b=await (await call("/enroll",{pin:TEST_ENV.KEPT_INITIAL_PIN})).json();
+  const changed=await call("/pin",{currentPin:TEST_ENV.KEPT_INITIAL_PIN,newPin:"49162835"},a.token);
+  assert.equal(changed.status,200);
+  const c=await changed.json();
+  assert.equal((await call("/session",undefined,b.token)).status,401);
+  assert.equal((await call("/session",undefined,a.token)).status,401);
+  assert.equal((await call("/session",undefined,c.token)).status,200);
+  assert.equal((await (await call("/session",undefined,c.token)).json()).key,a.key);
+  assert.equal((await call("/enroll",{pin:TEST_ENV.KEPT_INITIAL_PIN})).status,401);
+  assert.equal((await call("/enroll",{pin:"49162835"})).status,200);
+});
+test("forgetting one device does not erase other household sessions",async()=>{
+  const {call}=setup();
+  const a=await (await call("/enroll",{pin:TEST_ENV.KEPT_INITIAL_PIN})).json();
+  const b=await (await call("/enroll",{pin:TEST_ENV.KEPT_INITIAL_PIN})).json();
+  assert.equal((await call("/revoke",{},a.token)).status,200);
+  assert.equal((await call("/session",undefined,a.token)).status,401);
+  assert.equal((await call("/session",undefined,b.token)).status,200);
 });

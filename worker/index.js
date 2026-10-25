@@ -4,6 +4,8 @@
  * model/manual data goes to Gemini and chat question/model metadata goes to Groq.
  * No passphrases or plaintext household documents are accepted by this Worker.
  */
+import { HouseholdAccess } from './auth.js';
+export { HouseholdAccess } from './auth.js';
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
 const json = (payload, status=200, extra={}) => new Response(JSON.stringify(payload), { status, headers: { ...JSON_HEADERS, ...extra } });
 function allowedOrigin(origin, env) {
@@ -13,7 +15,7 @@ function allowedOrigin(origin, env) {
 }
 function corsHeaders(origin, env) {
   if (!origin || !allowedOrigin(origin, env)) return {};
-  return { "Access-Control-Allow-Origin": origin, "Vary": "Origin", "Access-Control-Allow-Headers": "Content-Type, X-Kept-Key", "Access-Control-Allow-Methods": "GET, PUT, POST, OPTIONS", "Access-Control-Max-Age": "600" };
+  return { "Access-Control-Allow-Origin": origin, "Vary": "Origin", "Access-Control-Allow-Headers": "Content-Type, Authorization", "Access-Control-Allow-Methods": "GET, PUT, POST, OPTIONS", "Access-Control-Max-Age": "600" };
 }
 function safeEqual(a,b) {
   if (typeof a !== "string" || typeof b !== "string") return false;
@@ -52,6 +54,11 @@ async function github(env, route, options={}) {
 const STATE_BRANCH = "runtime-state";
 function validEnvelope(e) {
   if (!e || typeof e !== "object" || Array.isArray(e)) return false;
+  if (e.v === 2 && e.algorithm === "AES-256-GCM" && Object.keys(e).sort().join(",") === "algorithm,ciphertext,iv,v") {
+    if(![e.iv,e.ciphertext].every(s=>typeof s==="string" && /^[A-Za-z0-9+/]+={0,2}$/.test(s)))return false;
+    const size = s => Math.floor(s.length*3/4)-(s.endsWith("==")?2:s.endsWith("=")?1:0);
+    return size(e.iv)===12 && size(e.ciphertext)>=16 && e.ciphertext.length<=3000000;
+  }
   if (Object.keys(e).sort().join(",") !== "algorithm,ciphertext,iv,salt,v") return false;
   if (e.v !== 1 || e.algorithm !== "PBKDF2-SHA256/AES-256-GCM") return false;
   if (![e.salt, e.iv, e.ciphertext].every(s => typeof s === "string" && /^[A-Za-z0-9+/]+={0,2}$/.test(s))) return false;
@@ -187,8 +194,26 @@ export async function handleRequest(request, env) {
   if(request.method==="OPTIONS") return new Response(null,{status:204,headers});
   const url=new URL(request.url);
   if(url.pathname==="/api/health" && request.method==="GET") return json({ok:true,service:"kept-sync"},200,headers);
-  if(!env.SYNC_TOKEN || env.SYNC_TOKEN.length<24) return json({error:"Server access key not configured securely."},503,headers);
-  if(!safeEqual(request.headers.get("X-Kept-Key"),env.SYNC_TOKEN)) return json({error:"Unauthorized."},401,headers);
+  // All state and AI routes require a server-issued device credential, not the
+  // former shared SYNC_TOKEN. A browser never needs GitHub/Cloudflare API keys.
+  if(!env.HOUSEHOLD_AUTH) return json({error:"Household access service is not configured."},503,headers);
+  const stub=env.HOUSEHOLD_AUTH.get(env.HOUSEHOLD_AUTH.idFromName("default-household"));
+  if(url.pathname.startsWith("/api/auth/")) {
+    const route=url.pathname.slice("/api/auth".length);
+    const actions={"/enroll":true,"/session":true,"/verify":true,"/pin":true,"/revoke":true};
+    if(!actions[route])return json({error:"Not found."},404,headers);
+    const internal=new Request("https://kept-internal.invalid"+route,{
+      method:request.method,headers:request.headers,
+      ...(request.method==="POST"?{body:await request.text()}:{})
+    });
+    const response=await stub.fetch(internal);
+    const h=new Headers(response.headers);
+    for(const [k,v] of Object.entries(headers))h.set(k,v);
+    return new Response(response.body,{status:response.status,headers:h});
+  }
+  const token=(request.headers.get("Authorization")||"").replace(/^Bearer /,"");
+  const verification=await stub.fetch(new Request("https://kept-internal.invalid/verify",{headers:{"Authorization":"Bearer "+token}}));
+  if(!verification.ok)return json({error:"Device not authorized. Enter the household PIN."},401,headers);
   try {
     let result;
     if(url.pathname==="/api/state" && request.method==="GET") result=json(await readState(env));

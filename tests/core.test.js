@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { CATALOG, GENERAL_REFERENCES } from "../lib/catalog.js";
 import { addDays, daysBetween, dueDate, status, upcomingTasks, calendarFile } from "../lib/schedules.js";
 import { mergeState, blankState, validateState } from "../lib/store.js";
-import { encryptState, decryptState } from "../lib/crypto.js";
+import { encryptState, decryptState, encryptWithKey, decryptWithKey } from "../lib/crypto.js";
 import { handleRequest, validEnvelope, secureManualUrl, safeEqual } from "../worker/index.js";
 
 test("catalog categories have unique ids and safe starter intervals",()=>{
@@ -53,24 +53,37 @@ test("manual URL validation blocks insecure/internal references",()=>{
   assert.equal(secureManualUrl("https://localhost/manual"),false);
   assert.equal(secureManualUrl("https://192.168.1.1/a"),false);
 });
-test("worker rejects unauthorized clients, disallowed origins, and insecure configuration",async()=>{
-  const env={ALLOWED_ORIGIN:"https://vudh1.github.io",SYNC_TOKEN:"a sufficiently long shared access token"};
-  const wrong=await handleRequest(new Request("https://worker.example/api/state",{headers:{Origin:"https://evil.example","X-Kept-Key":env.SYNC_TOKEN}}),env);
+function permitTestDevice() {
+  return {idFromName:()=>({}),get:()=>({fetch:async()=>new Response(JSON.stringify({ok:true}),{status:200})})};
+}
+test("worker refuses missing device authorization and disallowed origins",async()=>{
+  const env={ALLOWED_ORIGIN:"https://vudh1.github.io",HOUSEHOLD_AUTH:{
+    idFromName:()=>({}),get:()=>({fetch:async()=>new Response(JSON.stringify({error:"Unauthorized"}),{status:401})})
+  }};
+  const wrong=await handleRequest(new Request("https://worker.example/api/state",{headers:{Origin:"https://evil.example","X-Kept-Key":"old-shared-secret"}}),env);
   assert.equal(wrong.status,403);
-  const auth=await handleRequest(new Request("https://worker.example/api/state",{headers:{Origin:"https://vudh1.github.io","X-Kept-Key":"wrong"}}),env);
-  assert.equal(auth.status,401);
-  const noSecret=await handleRequest(new Request("https://worker.example/api/state"),{ALLOWED_ORIGIN:""});
-  assert.equal(noSecret.status,503);
+  const unauth=await handleRequest(new Request("https://worker.example/api/state",{headers:{Origin:"https://vudh1.github.io","X-Kept-Key":"old-shared-secret"}}),env);
+  assert.equal(unauth.status,401);
+  const noAuth=await handleRequest(new Request("https://worker.example/api/state"),{ALLOWED_ORIGIN:""});
+  assert.equal(noAuth.status,503);
   assert.equal(safeEqual("this is same","this is same"),true);
   assert.equal(safeEqual("this is same","this is different"),false);
 });
-
+test("high entropy key encrypts remote state and rejects corrupted envelopes",async()=>{
+  const key=await crypto.subtle.generateKey({name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+  const input={...blankState(),shopping:[{id:"x",name:"Private item"}]};
+  const envelope=await encryptWithKey(input,key);
+  assert.equal(validEnvelope(envelope),true);
+  assert.ok(!JSON.stringify(envelope).includes("Private item"));
+  assert.deepEqual(await decryptWithKey(envelope,key),input);
+  await assert.rejects(()=>decryptWithKey({...envelope,iv:"broken"},key),/Could not decrypt/);
+});
 test("runtime-state first sync creates a storage-only orphan root commit", async()=>{
   const realFetch = globalThis.fetch;
   const requests = [];
   const envelope = await encryptState({ ...blankState(), shopping: [{ id: "secret", name: "Private grocery" }] }, "a very long high entropy passphrase");
   const token = "this is a long secret access token";
-  const env = { GITHUB_REPO: "vudh1/kept", GITHUB_BRANCH: "runtime-state", GITHUB_TOKEN: "test-only", SYNC_TOKEN: token, ALLOWED_ORIGIN: "https://vudh1.github.io" };
+  const env = { GITHUB_REPO: "vudh1/kept", GITHUB_BRANCH: "runtime-state", GITHUB_TOKEN: "test-only", HOUSEHOLD_AUTH:permitTestDevice(), ALLOWED_ORIGIN: "https://vudh1.github.io" };
   const respond = (status, obj) => new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
   globalThis.fetch = async (url, opts={}) => {
     const u = new URL(url);
@@ -87,7 +100,7 @@ test("runtime-state first sync creates a storage-only orphan root commit", async
   try {
     const response = await handleRequest(new Request("https://worker.example/api/state", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Origin: "https://vudh1.github.io", "X-Kept-Key": token },
+      headers: { "Content-Type": "application/json", Origin: "https://vudh1.github.io", "Authorization":"Bearer "+token },
       body: JSON.stringify({ envelope, sha: null })
     }), env);
     assert.equal(response.status, 200);
@@ -105,7 +118,7 @@ test("runtime-state first sync creates a storage-only orphan root commit", async
 test("runtime-state refuses public source files and unsafe branch configuration", async()=>{
   const realFetch = globalThis.fetch;
   const token = "this is a long secret access token";
-  const env = { GITHUB_REPO: "vudh1/kept", GITHUB_BRANCH: "runtime-state", GITHUB_TOKEN: "test-only", SYNC_TOKEN: token };
+  const env = { GITHUB_REPO: "vudh1/kept", GITHUB_BRANCH: "runtime-state", GITHUB_TOKEN: "test-only", HOUSEHOLD_AUTH:permitTestDevice() };
   globalThis.fetch = async (url, opts={}) => {
     const u = new URL(url);
     assert.equal(opts.method || "GET", "GET");
