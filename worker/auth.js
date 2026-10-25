@@ -37,6 +37,7 @@ export class HouseholdAccess {
     const now=Date.now();
     const failures=await this.state.storage.get("failed")||{count:0,until:0};
     if(failures.until>now)return {status:429};
+    if(failures.until && failures.until<=now){failures.count=0;failures.until=0;}
     if(!validPin(pin))return {status:401};
     const saved=await this.state.storage.get("pin");
     let ok=false;
