@@ -1,0 +1,33 @@
+name: Provision Kept FRIDAY D1 (empty, idempotent)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/provision-friday-d1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kept-friday-d1-provision
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate Kept
+        run: npm run check
+      - name: Prepare empty D1 storage
+        run: node scripts/provision-friday-d1.mjs
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.KEPT_FRIDAY_D1_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
