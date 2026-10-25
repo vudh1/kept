@@ -2,6 +2,8 @@
 
 **Status: GitHub sign-in approach approved by owner; implementation remains a draft under review, not deployed or enabled.** This is a separate Worker entrypoint. It does **not** replace `kept-sync` or the existing fail-closed `kept-friday-admin` Worker, nor does it expose a reminder read, write or TV pairing route. It is intentionally absent from any deployment workflow or production `wrangler.toml`.
 
+**Owner-reported setup status (2026-10-25):** the owner says the dedicated GitHub OAuth App is registered, its client secret generated, the Workers plan is Free and the account subdomain is `vudhone.workers.dev`. These are owner attestations, **not** independent access to GitHub OAuth App settings, Cloudflare billing, or invoices. The planned callback remains `https://kept-friday-auth.vudhone.workers.dev/auth/callback` and that Worker is **not live**.
+
 ## Why GitHub OAuth
 
 The owner already uses GitHub. GitHub's web application OAuth flow supports authorization-code + **PKCE S256** with exact callback validation, no need for a new Cloudflare Zero Trust billing profile, and one narrow `read:user` scope. GitHub's immutable numeric user ID is checked against an exact private allowlist. A short-lived, revocable **D1-backed** session is then created; the OAuth access token is discarded and never stored. This is administrator authentication only, **not** consent to share data to a particular TV profile.
@@ -24,6 +26,21 @@ Alternatives: passkeys/WebAuthn can remove the GitHub login dependency but need 
 - [ ] Review the **existing** Cloudflare Workers account's *actual* plan/usage for cardless safety; do not use a card-required tier. Get separately approved D1 binding `AUTH_DB` to the existing **empty** `kept-friday-reminders` database only after the migration is reviewed and applied intentionally. No migration, D1 schema or new Worker is deployed by this PR.
 - [ ] Check provider terms immediately before activation; perform local Wrangler D1 and end-to-end GitHub login smoke tests; confirm callback origin and all negative tests in an isolated preview. Manually test revoke-all, expiry, HTTP 403/503 and outages.
 - [ ] Add a reviewed household consent and per-TV device/profile read grant protocol. This sign-in does not authorize viewing even one task on a television. Vela must default-hide protected Life content and revoke cached projections.
+
+### Local-only Wrangler D1 verification
+
+The file [`wrangler.local.toml`](wrangler.local.toml) binds a **fictitious UUID** for a temporary database, disables `workers.dev` deployment, and has no real credentials. It is for **local testing only**. Never pass `--remote`, deploy that configuration, or put the GitHub OAuth secret in source code.
+
+```sh
+# From the repository root; does not require Cloudflare login.
+npx wrangler d1 execute kept-friday-auth-local-only --local \
+  --config worker/friday-auth/wrangler.local.toml \
+  --file worker/friday-auth/schema.sql
+```
+
+Using local Wrangler **4.46.0** on 2026-10-25, all seven schema statements succeeded. A one-time `DELETE ... RETURNING verifier` returned the verifier on the first call and zero rows on replay. A separate local `INSERT ... ON CONFLICT ... RETURNING attempts` correctly produced rate-limit counts 1 and 2 in successive calls. **Caveat:** three `RETURNING` statements bundled into one `wrangler d1 execute --command` hit a local `SQLITE_BUSY` error; each statement succeeded when invoked separately. This is CLI/local SQL evidence, **not** a deployed Worker or an end-to-end login test. Actual Worker D1 `.first()` integration, GitHub redirect/cookies, revocation and quota-failure handling remain gates.
+
+**Credential handoff:** store the generated `GITHUB_CLIENT_SECRET` only in your private password manager until a separately approved isolated preview is ready. `wrangler secret put` can deploy a Worker immediately; do **not** run it as a harmless preparatory step. GitHub Actions secrets do not automatically become Cloudflare Worker runtime secrets.
 
 ## Cost boundary
 
