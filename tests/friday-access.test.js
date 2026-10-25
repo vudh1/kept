@@ -118,5 +118,9 @@ test("Access API permission failure is explicit and contains no private response
   };
   await assert.rejects(ensureFridayAccess({
     accountId, workersToken: "worker-token", accessToken: "access-token", adminEmailsJson: jsonList, request: denied,
-  }), (error) => error.message === "Cloudflare GET failed (HTTP 403).");
+  }), (error) => error.message === "Cloudflare Access application discovery failed (HTTP 403).");
+  const workerDenied = async () => ({ ok: false, status: 403 });
+  await assert.rejects(ensureFridayAccess({
+    accountId, workersToken: "worker-token", accessToken: "access-token", adminEmailsJson: jsonList, request: workerDenied,
+  }), (error) => error.message === "Cloudflare Worker script discovery failed (HTTP 403).");
 });
