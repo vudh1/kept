@@ -208,11 +208,9 @@ async function restoreSession() {
     try {
       const verified=await verifyDevice(previous.token);
       // A changed master key must never silently overwrite the local vault.
-      const secure=await readProtected();
-      if(!verified?.key)throw new Error("Missing household key");
-      const probe=await crypto.subtle.importKey("raw",Uint8Array.from(verified.key.match(/../g),h=>parseInt(h,16)),{name:"AES-GCM"},false,["encrypt","decrypt"]);
-      // Store key only if this is already our trusted device; decrypt prior vault first.
-      if(secure)void probe;
+      if(!verified?.key || !/^[a-f0-9]{64}$/.test(verified.key))throw new Error("Missing household key");
+      // The non-extractable key is persisted from the original enrollment.
+      // Never replace it silently when remote key state becomes inconsistent.
     } catch(error) {
       if(error.status===401){await forgetDevice();return;}
       // When offline, existing trusted-device data remains accessible locally.
@@ -305,7 +303,8 @@ document.addEventListener("click", async event => {
     case "sync": await performSync(); break;
     case "forget-device": {
       if(!confirm("Forget this device? Its encrypted local data will be erased; remote household records stay available on other devices."))break;
-      try{await revokeDevice(session.token);}catch{} 
+      try {await revokeDevice(session.token);}
+      catch {notify("Cannot revoke this device while offline. Reconnect before forgetting it.");break;}
       await forgetDevice();session=null;state=blankState();render();notify("Device forgotten. Enter your PIN to reconnect.");break;
     }
     case "export-calendar": { const tasks=upcomingTasks(state); download("kept-maintenance.ics",calendarFile(tasks,visibleAppliances()),"text/calendar;charset=utf-8"); notify("Calendar export ready. Import it into your iPhone calendar."); break; }
