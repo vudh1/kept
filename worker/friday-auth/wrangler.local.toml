@@ -1,7 +1,7 @@
 # Local-only D1 smoke-test configuration. Never deploy this configuration.
 # Placeholder database ID is intentionally not a real Cloudflare resource.
 name = "kept-friday-auth-local-only"
-main = "index.js"
+main = "../../tests/friday-wrangler-d1-worker.smoke.js"
 compatibility_date = "2026-10-25"
 workers_dev = false
 
