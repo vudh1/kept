@@ -1,6 +1,6 @@
 /* Kept app shell only. Private household data is never added to the SW cache. */
-const CACHE = "kept-shell-v4";
-const ASSETS = ["./", "./index.html", "./app.js", "./styles.css", "./manifest.webmanifest", "./icons/icon.svg", "./lib/catalog.js", "./lib/catalog-extensions.js", "./lib/store.js", "./lib/schedules.js", "./lib/crypto.js", "./lib/sync.js"];
+const CACHE = "kept-shell-v5";
+const ASSETS = ["./", "./index.html", "./app.js", "./styles.css", "./manifest.webmanifest", "./icons/icon.svg", "./lib/catalog.js", "./lib/catalog-extensions.js", "./lib/store.js", "./lib/schedules.js", "./lib/crypto.js", "./lib/sync.js", "./lib/secure-device.js"];
 self.addEventListener("install", event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", event => {
