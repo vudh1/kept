@@ -2,6 +2,8 @@
 
 **Kept** is a small iPhone-first household PWA inspired by BallerWatch's navy glassmorphism UI. Track appliances, review maintenance due dates, and keep a shopping list with a partner. Its offline, local-first interface is functional without any cloud credentials. An optional Cloudflare Worker synchronizes **client-encrypted** household state into a dedicated orphan `runtime-state` GitHub branch.
 
+**FRIDAY:** [Integration ownership and compatibility](FRIDAY.md) · [Agent instructions](AGENTS.md).
+
 > **Status:** v0.1 foundation with automated GitHub Pages publication. Shopping and maintenance screens, schedules, history, local persistence, encrypted GitHub sync code, Gemini manual research drafts, and Groq Q&A are implemented. Deployment, shared sync, and AI **require your own configuration and API keys**. Native timed Web Push, live store arrival geofencing, and retailer inventory crawling are **not implemented**. Calendar export provides basic iPhone reminders until Web Push is ready.
 
 ## Features
