@@ -146,3 +146,13 @@ textarea { min-height: 95px; resize: vertical; }
 .setup-link { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; color: var(--text); background: transparent; border: 0; border-top: 1px solid var(--stroke); padding: 13px 1px; min-height: 44px; font-size: .87rem; }
 .setup-link span { flex: none; color: var(--accent); font-weight: 700; }
 @media (max-width: 420px) { .modal { width: calc(100% - 16px); padding: 18px; border-radius: 20px; } .modal .form-actions { bottom: -18px; } }
+
+/* Households unlock only after the Cloudflare PIN service authorizes this device. */
+.access-hero { padding-top: min(13vh,95px); text-align: center; }
+.access-hero .subtitle { margin: 0 auto; max-width: 380px; }
+.access-lock { margin: 0 auto 24px; width: 74px; height: 74px; border-radius: 22px;
+ display: grid; place-items: center; font-size: 2.25rem; color: #b3ddf9;
+ background: linear-gradient(140deg,rgba(94,178,226,.25),rgba(31,64,109,.5)); border: 1px solid var(--stroke-strong); }
+.access-card { max-width: 430px; margin: 18px auto; padding: 20px; }
+.access-card .btn { margin-top: 16px; }
+.access-card .form-tip { text-align: center; margin-top: 17px; line-height: 1.5; }
