@@ -29,3 +29,7 @@ Follow the [FRIDAY cardless cost policy](https://github.com/vudh1/friday/blob/ma
 ## Release and verification
 
 Use a focused branch/PR. Run the current repo's validation/tests; check offline use and encryption/merge/revocation when relevant. The `main` workflow can auto-publish Pages; Worker deployment is separate. Do not merge, deploy, change credentials or adopt paid services only to align FRIDAY. Report privacy, cost, compatibility, rollback and verified status.
+
+## Licensing and provenance
+
+Original project code/docs follow the root [Apache-2.0 license](LICENSE). Verify rights before importing third-party libraries, appliance manuals, images, manufacturers' content or generated assets. Preserve their required attribution and notices; do not relicense private household state or manufacturer marks. Licensing edits use a reviewed PR and do not independently authorize Pages/Worker deployment.
