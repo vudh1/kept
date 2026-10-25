@@ -19,6 +19,7 @@ for (const [name, browserType, contextOptions] of configurations) {
   // just the Worker fetch interface in the test document, never the app logic.
   const mockBackendScript=()=>{
     const original=window.fetch.bind(window);
+    window.__keptTestMockReady=true;
     const token="f".repeat(64),key="a1".repeat(32);
     window.fetch=(input,options={})=>{
       const url=String(typeof input==="string"?input:input?.url||"");
@@ -54,6 +55,7 @@ for (const [name, browserType, contextOptions] of configurations) {
   try {
     const response = await page.goto(target, { waitUntil: "networkidle", timeout: 30000 });
     if (!response?.ok()) throw new Error("Home page HTTP " + response?.status());
+    if(!await page.evaluate(()=>window.__keptTestMockReady===true))throw new Error("Worker API mock did not initialize");
     await page.locator("#household-pin").waitFor({state:"visible",timeout:8000});
     await page.locator("#household-pin").fill("83519462");
     await page.getByRole("button",{name:"Unlock this device"}).click();
@@ -97,7 +99,7 @@ for (const [name, browserType, contextOptions] of configurations) {
   } catch (e) {
     failureCount++;
     console.error("FAIL "+name+" "+(isProduction?"production":"local")+": "+e.message);
-    console.error("URL="+page.url()+" page errors="+JSON.stringify(pageErrors.slice(0,8)));
+    console.error("URL="+page.url()+" page errors="+JSON.stringify(pageErrors.slice(0,8))+" init="+(await page.evaluate(()=>window.__keptTestMockReady).catch(()=>false)));
     console.error("Dialog open="+(await page.locator("#editor").evaluate(x=>x.open).catch(()=>false)));
     console.error("Current body="+(await page.locator("body").innerText().catch(()=>"<none>")).slice(0,750));
   } finally {
