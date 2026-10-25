@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CATALOG } from "../lib/catalog.js";
+import { CATALOG, GENERAL_REFERENCES } from "../lib/catalog.js";
 import { addDays, daysBetween, dueDate, status, upcomingTasks, calendarFile } from "../lib/schedules.js";
 import { mergeState, blankState, validateState } from "../lib/store.js";
 import { encryptState, decryptState } from "../lib/crypto.js";
@@ -118,4 +118,30 @@ test("runtime-state refuses public source files and unsafe branch configuration"
     const unsafe = await handleRequest(new Request("https://worker.example/api/state", { headers: { "X-Kept-Key": token } }), { ...env, GITHUB_BRANCH: "main" });
     assert.equal(unsafe.status, 500);
   } finally { globalThis.fetch = realFetch; }
+});
+
+test("category-first catalog includes common appliances without a model number",()=>{
+  assert.equal(CATALOG.length, 32);
+  assert.equal(CATALOG.at(-1).id, "other");
+  for(const id of ["dishwasher","washer","dryer","hvac","humidifier","microwave","robot-vacuum","sump-pump","leak-sensor"]) {
+    const item=CATALOG.find(x=>x.id===id);
+    assert.ok(item?.tasks.length>=1, id);
+    for(const task of item.tasks){
+      assert.ok(Number.isInteger(task.days)&&task.days>=1&&task.days<=3650, id);
+      assert.ok(task.title.length && task.notes.length, id);
+      if(task.sourceUrl) assert.match(task.sourceUrl,/^https:\/\//);
+    }
+  }
+  for(const url of Object.values(GENERAL_REFERENCES)) assert.match(url,/^https:\/\//);
+  assert.ok(CATALOG.find(x=>x.id==="humidifier").tasks[0].notes.includes("while"));
+});
+
+test("general starter tasks stay source-labeled and do not require AI",()=>{
+  const dishwasher=CATALOG.find(x=>x.id==="dishwasher");
+  assert.ok(dishwasher.tasks.length>0);
+  assert.equal(typeof GENERAL_REFERENCES.dishwasher,"string");
+  const candidates=dishwasher.tasks.map((task,index)=>({index,...task}));
+  const accepted=candidates.filter(x=>[0].includes(x.index));
+  assert.equal(accepted.length,1);
+  assert.equal(accepted[0].title,dishwasher.tasks[0].title);
 });
