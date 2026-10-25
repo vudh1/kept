@@ -191,13 +191,15 @@ function render() {
   if ("setAppBadge" in navigator) navigator.setAppBadge(taskCount()).catch(()=>{});
 }
 async function activateDevice(active) {
-  session=active;
-  // One-time migration: do not delete the previous plaintext until encryption succeeds.
+  // Fail closed: never mark this device unlocked before its encrypted vault
+  // has been successfully read and any legacy records durably migrated.
   const encrypted=await readProtected();
   const previous=readLocal();
-  state=mergeState(encrypted,previous);
-  await writeProtected(state,session);
+  const merged=mergeState(encrypted,previous);
+  await writeProtected(merged,active);
   localStorage.removeItem(STORAGE_KEY);
+  state=merged;
+  session=active;
   booting=false;render();
   performSync(false);
 }
