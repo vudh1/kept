@@ -1,10 +1,10 @@
 # kept. — Home, handled.
 
-**Kept** is a small iPhone-first household PWA inspired by BallerWatch's navy glassmorphism UI. Track appliances, review maintenance due dates, and keep a shopping list with a partner. Its offline, local-first interface is functional without any cloud credentials. An optional Cloudflare Worker synchronizes **client-encrypted** household state into a dedicated orphan `runtime-state` GitHub branch.
+**Kept** is a small iPhone-first household PWA inspired by BallerWatch's navy glassmorphism UI. Track appliances, review maintenance due dates, and keep a shopping list with a partner. Its offline, local-first interface is functional without any cloud credentials. A Cloudflare Worker is available for opt-in **client-encrypted** household synchronization to the isolated `runtime-state` GitHub branch. A separate PIN-gated trusted-device upgrade is staged for release.
 
 **FRIDAY:** [Integration ownership and compatibility](FRIDAY.md) · [Agent instructions](AGENTS.md).
 
-> **Status:** v0.1 foundation with automated GitHub Pages publication. Shopping and maintenance screens, schedules, history, local persistence, encrypted GitHub sync code, Gemini manual research drafts, and Groq Q&A are implemented. Deployment, shared sync, and AI **require your own configuration and API keys**. Native timed Web Push, live store arrival geofencing, and retailer inventory crawling are **not implemented**. Calendar export provides basic iPhone reminders until Web Push is ready.
+> **Status:** v0.1 live; PIN-only household access and automatic sync are in draft PR #10, not yet deployed. Shopping and maintenance screens, schedules, history, local persistence, encrypted GitHub sync code, Gemini manual research drafts, and Groq Q&A are implemented. Deployment, shared sync, and AI **require your own configuration and API keys**. Native timed Web Push, live store arrival geofencing, and retailer inventory crawling are **not implemented**. Calendar export provides basic iPhone reminders until Web Push is ready.
 
 ## Features
 
@@ -12,7 +12,7 @@
 - Grocery/shopping list: add, edit, remove, check off, quantities, preferred stores, and store filters.
 - Appliance catalog with **31 named categories plus Other** and editable general starter tasks. Choose category first, select relevant tasks, optionally enter a last-maintenance date. Brand/model/manual are tucked under optional details; no AI required.
 - Maintenance: flexible day intervals, overdue/soon views, completion history, optional calendar event export (single upcoming occurrences, with alert one day early).
-- Offline local device database and an **opt-in** encrypted two-device sync. GitHub stores a single AES-256-GCM envelope, not readable shopping data.
+- Offline local device database and an **opt-in** encrypted two-device sync (PIN upgrade is not live until deployed). GitHub stores a single AES-256-GCM envelope, not readable shopping data.
 - AI research is an optional advanced step: Gemini reads a user-provided HTTPS public manual link and creates **review-required** drafts with evidence excerpts. Tasks with unsupported intervals are excluded. It never silently applies updates.
 - Groq assistant for generic maintenance Q&A; household shopping/history is not sent to models by default.
 - Node unit tests for date handling, AES-GCM, merges, authentication, and URL validation.
@@ -25,7 +25,7 @@ python3 -m http.server 4173
 # visit http://localhost:4173
 ```
 
-The app works without a backend on one device. It stores local data in browser `localStorage` (plaintext inside browser origin storage). Do not treat it as a secure or durable sole backup; clearing browser site data removes it. Use the Settings → Export JSON backup action to keep a copy **securely**; the export is intentionally unencrypted.
+The currently live app works without a backend on one device. It stores local data in browser `localStorage` (plaintext inside browser origin storage). The staged PIN upgrade migrates these records to encrypted IndexedDB after authenticated setup. Do not treat it as a secure or durable sole backup; clearing browser site data removes it. Use the Settings → Export JSON backup action to keep a copy **securely**; the export is intentionally unencrypted.
 
 ## Publish PWA
 
@@ -35,37 +35,31 @@ Your project URL is **https://vudh1.github.io/kept/** after the deployment succe
 
 Both people must install from the same web origin. Without sync configured, each device has its **own** local list; it is not automatically shared.
 
-## Configure encrypted shared sync
+## Secure household access and shared sync (staged rollout)
 
-1. **Public repository / encrypted storage:** Kept now uses the isolated **`runtime-state` branch in this same `vudh1/kept` repository**, matching BallerWatch's branch layout. The branch is initialized independently of `main` (orphan history) and only `state.json` is permitted; the browser encrypts the entire household state before uploading. There is no plaintext JSON on GitHub. **Important:** because the repository is public, anyone can download the encrypted snapshot, view its historical versions and commit timestamps, and attempt offline passphrase guesses. Use a **unique, high-entropy passphrase** (for example 6 randomly chosen Diceware words, not a reused password) and treat the public encrypted branch as less private than a separate private repository. You may switch to a private data repository later without changing the app data format. Create a fine-grained GitHub PAT scoped to `vudh1/kept` with **Contents: Read and write** for the Cloudflare Worker (GitHub does not offer branch-only restrictions for these credentials). Never expose the PAT in your frontend or Git commits.
-2. Install Cloudflare Wrangler using `npx wrangler` and authenticate (`npx wrangler login`); deploy from `worker/`:
+The proposed PIN-based access is developed in **draft PR #10**. It is **not active in production until the Worker and Pages have both been deployed after review**. The currently live Kept UI continues to use local data without this new login.
 
-   ```sh
-   cd worker
-   npx wrangler secret put GITHUB_TOKEN
-   npx wrangler secret put SYNC_TOKEN
-   # SYNC_TOKEN should be unique and at least 24 random characters
-   npx wrangler deploy
-   ```
+**New-device flow:** first visit asks for an **8–12-digit household PIN**. Cloudflare verifies the PIN in a SQLite-backed Durable Object with failed-attempt limits (five wrong attempts lock the household for 15 minutes). On success it issues a random 256-bit device credential and a **separate random 256-bit household data key**. Kept stores a nonextractable WebCrypto key and device credential in IndexedDB. It encrypts the local inventory and public GitHub snapshot with AES-256-GCM; the PIN never becomes the encryption key. Reopening a trusted iPhone does **not** require the PIN. New-device enrollment requires internet; trusted devices can browse and edit encrypted local data offline.
 
-3. In `worker/wrangler.toml`, set `ALLOWED_ORIGIN` to your PWA's **origin** (e.g. `https://vudh1.github.io`, *not* `/kept/`). The origin must be HTTPS for deployed use. Keep `GITHUB_REPO = "vudh1/kept"` and `GITHUB_BRANCH = "runtime-state"`. If the branch does not yet exist, the first encrypted sync creates an **orphan root commit** containing only `state.json`; if the empty branch is already initialized, the first sync writes that file. Every read audits the root directory and refuses any extra files.
-4. On **each iPhone**, open Kept → Settings. Enter Worker URL (`https://kept-sync.<your-subdomain>.workers.dev`), same **SYNC_TOKEN**, and the same strong **household encryption passphrase** (12+ characters; 5–6 random words preferred). Tap **Save & sync now**. The password is deliberately memory-only; reenter it after app reload/restart. Access token is session-only (cleared after browser session).
-5. Try editing the shopping list on device A, unlock and sync device B, and verify both lists merge. When unlocked, Kept syncs after changes, after returning to the app, and every minute while visible.
+**Required one-time GitHub Actions secrets** (repository **Settings → Secrets and variables → Actions** or the **production** environment; never add values to source, issue comments, or chat):
 
-**Security and conflict policy:** User content is encrypted in the browser with PBKDF2-SHA256 (310,000 iterations) and AES-256-GCM with random salt/nonce per snapshot; the passphrase is never transmitted to the Worker. The Worker gates reads/writes with a long shared sync token and CORS origin allowlist; GitHub token is Worker-only. GitHub writes use an expected SHA and explicit 409 conflicts. Branch history is encrypted-only after initialization, but normal GitHub updates preserve old ciphertext commits; unlike BallerWatch's history-replacing runtime snapshots, Kept does not yet rewrite branch history. The client refetches, decrypts, merges individual entities, and retries. Concurrent edits to the **same record** use latest `updatedAt` then `updatedBy`; concurrent edits to **different records** merge. Clocks drifting substantially may cause inaccurate conflict resolution. Deletes use tombstones. A future version should improve per-field merges and add compaction/versioning.
+- `KEPT_INITIAL_PIN`: choose your household's **8–12 numeric digits**, ideally 10–12 random digits; use only for Kept. Kept Settings lets an authorized device change it later, revoking old trusted device sessions. Do not use your phone passcode.
+- `KEPT_PIN_PEPPER`: generate using `openssl rand -hex 32` and save the output. The pepper never goes to the browser.
+- Existing deployment secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `KEPT_GITHUB_PAT` (Contents read/write), and optional `GROQ_API_KEY` / `GEMINI_API_KEY`.
 
-**Threat model:** This is a **public Git repository**, so ciphertext and Git commit metadata are publicly accessible indefinitely. The GitHub branch holds ciphertext, but the device has plaintext in `localStorage` and in memory. Compromise of the browser origin, device, access token, or a guessed passphrase may leak data. Enforce CSP and avoid third-party scripts in production. Losing the passphrase means you cannot recover the remote state. The shared Worker token does not uniquely identify each person; household member invites/individual tokens are future work. Periodic sync incurs GitHub API requests/commits; this small-household design is not a large-scale database.
+`KEPT_SYNC_TOKEN` is **retired by the new Worker source**. Old deployed Workers may still accept it until replaced. Remove or rotate the old secret after the authenticated Worker is confirmed live.
 
-## Enable opt-in AI research and chat
+**Safe release order:**
+1. Add `KEPT_INITIAL_PIN` and `KEPT_PIN_PEPPER` secrets in GitHub; never paste them in a message.
+2. Deploy the Worker **from the feature branch** using Actions → **Deploy Kept Cloudflare Worker** → **Run workflow** → choose `feature/pin-device-auth-sync`. Existing production frontend continues working until the new one ships. Confirm `/api/health` works and unauthenticated `/api/state` returns 401.
+3. After PR checks pass, merge the feature into `main`; the Pages workflow publishes the PIN screen. Open Kept in Safari, enter the PIN once, and verify that existing local items are migrated **only after encrypted IndexedDB persistence succeeds**.
+4. Pair the second iPhone with the same PIN. Test changing a shopping item on one and seeing it on the other after sync. Test offline editing and reconnection. Do not delete website data or uninstall before checking the migration.
 
-```sh
-cd worker
-npx wrangler secret put GEMINI_API_KEY  # optional
-npx wrangler secret put GROQ_API_KEY    # optional
-npx wrangler deploy
-```
+The client uses the configured service URL `https://kept-sync.vudhone.workers.dev`, never an editable URL, GitHub PAT or shared API token in Settings.
 
-You may edit `GEMINI_MODEL` and `GROQ_MODEL` in `worker/wrangler.toml` to an available model on your account. AI features are disabled until credentials are set. The manual researcher requires a **brand, model, and public HTTPS manual URL**. Its suggestion is a **draft**, not verified manufacturer instruction. All tasks added from AI remain unscheduled until you enter the date maintenance was last performed. A returned source excerpt is included in task instructions for review. Avoid uploading private receipts, addresses, photos, or serial numbers to free-tier AI services. Provider rate limits, terms, and free eligibility can change.
+**Privacy and recovery:** the `runtime-state` branch is **public** and stores only ciphertext, but its commit history/timestamps remain public. The Worker can deliver the data key to authorized devices, so this is **Cloudflare-managed encryption, not end-to-end encryption against Cloudflare**. A stolen or compromised trusted device and injected same-origin code can access local content; offline devices cannot learn revocation until reconnecting. Do not treat the PIN as complete user authentication or encrypted-key recovery. Export a JSON backup to a safe location; backup exports are unencrypted. Losing all trusted-device records and the Durable Object's random key can make public ciphertext unrecoverable. A dedicated independent recovery-key flow is future work.
+
+**Offline first:** after one successful enrollment, browse and finish tasks offline. Sync/API failures must never prevent local edits, and reminders continue to be calculated locally. Automated background iPhone push, geofencing and retailer stock detection are separate future features. No FRIDAY shared information is exposed by this update.
 
 ## Reminders, store detection, and inventory — honest limitations
 
