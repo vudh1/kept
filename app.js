@@ -91,7 +91,10 @@ function visibleShopping() { return state.shopping.filter(x => !x.deleted); }
 function taskCount() { return upcomingTasks(state).filter(t => ["overdue","due","soon"].includes(t.due.kind)).length; }
 function taskCard(task) {
   const a = visibleAppliances().find(x => x.id === task.applianceId);
-  return `<div class="card glass"><div class="card-row"><div class="icon-tile">${iconFor(a?.category)}</div><div class="card-main"><div class="card-title">${html(task.title)}</div><div class="card-description">${html(a?.name || "Home")} · ${html(formatDate(task.due.date))}</div></div><span class="pill ${task.due.kind}">${html(task.due.label)}</span></div><div class="action-row"><button class="btn small secondary" data-action="complete" data-id="${html(task.id)}">Mark done</button><button class="btn small secondary" data-action="edit-task" data-id="${html(task.id)}">Edit schedule</button></div></div>`;
+  // The Home detail view passes raw persisted tasks; Today passes computed tasks.
+  // Normalize both so a newly saved appliance never crashes during rendering.
+  const due = task.due || status(task);
+  return `<div class="card glass"><div class="card-row"><div class="icon-tile">${iconFor(a?.category)}</div><div class="card-main"><div class="card-title">${html(task.title)}</div><div class="card-description">${html(a?.name || "Home")} · ${html(formatDate(due.date))}</div></div><span class="pill ${due.kind}">${html(due.label)}</span></div><div class="action-row"><button class="btn small secondary" data-action="complete" data-id="${html(task.id)}">Mark done</button><button class="btn small secondary" data-action="edit-task" data-id="${html(task.id)}">Edit schedule</button></div></div>`;
 }
 function iconFor(category) {
   const map = { dishwasher:"◈",refrigerator:"▣",washer:"◉",dryer:"✺",hvac:"❋","water-heater":"♨",irrigation:"◌","smoke-alarm":"◇","air-purifier":"✳",vacuum:"✧",range:"♨","coffee-maker":"☕","range-hood":"≋","garage-door":"▤","water-filter":"◍",microwave:"▧",freezer:"❄","garbage-disposal":"♻","toaster-oven":"♨","electric-kettle":"♨","robot-vacuum":"◎",humidifier:"◌",dehumidifier:"◍","bathroom-fan":"✺","ceiling-fan":"✺","sump-pump":"◈","water-softener":"◍",thermostat:"◉","security-camera":"◇","window-ac":"❄","leak-sensor":"◈",other:"⌂" };
