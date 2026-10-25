@@ -2,7 +2,7 @@
 import { CATALOG, catalogItem, GENERAL_REFERENCES } from "./lib/catalog.js";
 import { todayLocal, upcomingTasks, status, formatDate, calendarFile } from "./lib/schedules.js";
 import { STORAGE_KEY, readLocal, blankState, mergeState, touch, uid, SETTINGS_KEY } from "./lib/store.js";
-import { deviceSession, rememberDevice, updateToken, readProtected, writeProtected, forgetDevice } from "./lib/secure-device.js";
+import { deviceSession, rememberDevice, updateToken, readProtected, writeProtected, forgetDevice, suspendDevice } from "./lib/secure-device.js";
 import { syncOnce, researchAppliance, askAssistant, enrollDevice, verifyDevice, changeHouseholdPin, revokeDevice } from "./lib/sync.js";
 
 const $ = sel => document.querySelector(sel);
@@ -214,7 +214,7 @@ async function restoreSession() {
       // The non-extractable key is persisted from the original enrollment.
       // Never replace it silently when remote key state becomes inconsistent.
     } catch(error) {
-      if(error.status===401){await forgetDevice();return;}
+      if(error.status===401){await suspendDevice();return;}
       // When offline, existing trusted-device data remains accessible locally.
     }
     await activateDevice(previous);
