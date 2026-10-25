@@ -22,7 +22,7 @@ export function accessPolicyFor(workerTag, emails) {
   };
 }
 
-async function cfRequest(request, path, token, method = "GET", body) {
+async function cfRequest(request, path, token, method = "GET", body, operation = "request") {
   const response = await request(`${API}${path}`, {
     method,
     headers: {
@@ -34,11 +34,11 @@ async function cfRequest(request, path, token, method = "GET", body) {
   });
   if (!response.ok) {
     // Never print response bodies; API errors can contain identifying details.
-    throw new Error(`Cloudflare ${method} failed (HTTP ${response.status}).`);
+    throw new Error(`Cloudflare ${operation} failed (HTTP ${response.status}).`);
   }
   const payload = await response.json();
   if (payload?.success !== true) {
-    throw new Error(`Cloudflare ${method} did not succeed.`);
+    throw new Error(`Cloudflare ${operation} did not succeed.`);
   }
   return payload;
 }
@@ -49,7 +49,8 @@ export async function ensureFridayAccess({ accountId, workersToken, accessToken,
   const emails = parseAdminEmails(adminEmailsJson);
   const base = `/accounts/${accountId}`;
 
-  const workers = await cfRequest(request, `${base}/workers/scripts`, workersToken);
+  const workers = await cfRequest(request, `${base}/workers/scripts`, workersToken,
+    "GET", undefined, "Worker script discovery");
   const scripts = workers.result;
   if (!Array.isArray(scripts)) throw new Error("Could not inspect isolated Workers.");
   const exactWorker = scripts.filter((worker) => worker.id === WORKER_NAME);
@@ -57,7 +58,8 @@ export async function ensureFridayAccess({ accountId, workersToken, accessToken,
     throw new Error("Isolated admin Worker is absent or missing its immutable tag.");
   }
 
-  const apps = await cfRequest(request, `${base}/access/apps?page=1&per_page=100`, accessToken);
+  const apps = await cfRequest(request, `${base}/access/apps?page=1&per_page=100`, accessToken,
+    "GET", undefined, "Access application discovery");
   if (!Array.isArray(apps.result) ||
       (apps.result_info && apps.result_info.total_pages > 1)) {
     throw new Error("Cannot verify all existing Access applications; refusing changes.");
@@ -76,7 +78,8 @@ export async function ensureFridayAccess({ accountId, workersToken, accessToken,
   }
 
   const expected = accessPolicyFor(exactWorker[0].tag, emails);
-  const created = await cfRequest(request, `${base}/access/apps`, accessToken, "POST", expected);
+  const created = await cfRequest(request, `${base}/access/apps`, accessToken,
+    "POST", expected, "Access application creation");
   if (!created.result?.id) throw new Error("Access API did not confirm application creation.");
   return { created: true, needsReview: false };
 }
