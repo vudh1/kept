@@ -22,6 +22,10 @@ Read [README.md](README.md), [FRIDAY.md](FRIDAY.md), relevant code/tests and Git
 
 For possible Vela Life reminders, resolve **how consent and a minimal projection work without weakening browser-side encryption** before coding. One-off ICS export is not an automatic FRIDAY feed.
 
+## FRIDAY billing safety
+
+Follow the [FRIDAY cardless cost policy](https://github.com/vudh1/friday/blob/main/docs/COST_POLICY.md). No new payment method, paid/free-converting trial, metered integration or free tier requiring a card by default. Verify official quotas and failure/overage behavior before changing AI, Cloudflare or sync usage; current tokens do not authorize billing. Code/CI cannot certify actual invoices. Cloudflare Zero Trust onboarding is on hold; the isolated FRIDAY admin Worker remains fail closed, and Kept's existing encrypted sync remains independent. See [staged Cloudflare notes](docs/FRIDAY_CLOUDFLARE.md).
+
 ## Release and verification
 
 Use a focused branch/PR. Run the current repo's validation/tests; check offline use and encryption/merge/revocation when relevant. The `main` workflow can auto-publish Pages; Worker deployment is separate. Do not merge, deploy, change credentials or adopt paid services only to align FRIDAY. Report privacy, cost, compatibility, rollback and verified status.
