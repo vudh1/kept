@@ -1,0 +1,40 @@
+name: Browser smoke · Kept appliance flow
+on:
+  push:
+    branches: [fix/real-browser-appliance-e2e]
+  pull_request:
+    paths:
+      - app.js
+      - index.html
+      - sw.js
+      - lib/**
+      - styles.css
+      - tests/browser-smoke.mjs
+      - .github/workflows/browser-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check
+      - name: Install browser automation
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium webkit
+      - name: Test fresh local PWA in mobile Chromium and WebKit
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/kept-http.log 2>&1 &
+          KEPT_TEST_URL=http://127.0.0.1:4173/ node tests/browser-smoke.mjs
+      - name: Test currently published production website
+        env:
+          KEPT_TEST_URL: https://vudh1.github.io/kept/
+        run: node tests/browser-smoke.mjs
