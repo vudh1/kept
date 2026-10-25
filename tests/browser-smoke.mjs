@@ -14,28 +14,30 @@ for (const [name, browserType, contextOptions] of configurations) {
   const page = await context.newPage();
 
   const pageErrors = [];
-  const accessToken = "f".repeat(64);
-  const dataKey = "a1".repeat(32);
-  let stored = null;
-  let sha = null;
-  // API replies are intercepted in the test process; no real household data is accessed.
-  await context.route("https://kept-sync.vudhone.workers.dev/**", async route => {
-    const req=route.request(), path=new URL(req.url()).pathname;
-    const origin=new URL(target).origin;
-    const headers={"Access-Control-Allow-Origin":origin,
-      "Access-Control-Allow-Headers":"Content-Type, Authorization",
-      "Access-Control-Allow-Methods":"GET, PUT, POST, OPTIONS"};
-    const ok=(data,status=200)=>route.fulfill({status,contentType:"application/json",headers,body:JSON.stringify(data)});
-    if(req.method()==="OPTIONS")return route.fulfill({status:204,headers});
-    if(path==="/api/auth/enroll")return ok({ok:true,token:accessToken,key:dataKey});
-    if(path==="/api/auth/session")return ok({ok:true,key:dataKey});
-    if(path==="/api/state"&&req.method()==="GET")return ok({envelope:stored,sha});
-    if(path==="/api/state"&&req.method()==="PUT"){
-      const body=JSON.parse(req.postData());
-      if((body.sha||null)!==(sha||null))return ok({error:"Conflict"},409);
-      stored=body.envelope;sha="b".repeat(40);return ok({ok:true,sha});
-    }
-    return ok({error:"Unmocked endpoint"},404);
+
+  // Cross-origin interception of browser preflights varies by engine, so fake
+  // just the Worker fetch interface in the test document, never the app logic.
+  await page.addInitScript(()=>{
+    const original=window.fetch.bind(window);
+    const token="f".repeat(64),key="a1".repeat(32);
+    window.fetch=(input,options={})=>{
+      const url=String(typeof input==="string"?input:input?.url||"");
+      if(!url.startsWith("https://kept-sync.vudhone.workers.dev/"))return original(input,options);
+      const path=new URL(url).pathname,method=options.method||"GET";
+      let stored=null;
+      try{stored=JSON.parse(sessionStorage.getItem("__test_kept_cloud")||"null");}catch{}
+      const respond=(data,status=200)=>Promise.resolve(new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json"}}));
+      if(path==="/api/auth/enroll")return respond({ok:true,token,key});
+      if(path==="/api/auth/session")return respond({ok:true,key});
+      if(path==="/api/state"&&method==="GET")return respond(stored||{envelope:null,sha:null});
+      if(path==="/api/state"&&method==="PUT"){
+        const body=JSON.parse(options.body);
+        if((body.sha||null)!==(stored?.sha||null))return respond({error:"Conflict"},409);
+        sessionStorage.setItem("__test_kept_cloud",JSON.stringify({envelope:body.envelope,sha:"b".repeat(40)}));
+        return respond({ok:true,sha:"b".repeat(40)});
+      }
+      return respond({error:"Unmocked"},404);
+    };
   });
   page.on("pageerror", e => pageErrors.push(e.message));
   page.on("console", m => { if (m.type() === "error") pageErrors.push(m.text()); });
@@ -61,7 +63,8 @@ for (const [name, browserType, contextOptions] of configurations) {
     await page.getByText("Test washer").first().waitFor({state:"visible",timeout:8000});
     await page.getByText("Test washer").first().click();
     await page.getByText("Clean washer tub and gasket").first().waitFor({state:"visible",timeout:8000});
-    if(!stored || stored.v!==2 || JSON.stringify(stored).includes("Test washer"))
+    const stored=await page.evaluate(()=>JSON.parse(sessionStorage.getItem("__test_kept_cloud")||"null"));
+    if(!stored?.envelope || stored.envelope.v!==2 || JSON.stringify(stored).includes("Test washer"))
       throw new Error("Remote state was not encrypted and uploaded.");
     const plaintext=await page.evaluate(()=>localStorage.getItem("kept.household.v1"));
     if(plaintext!==null)throw new Error("Plaintext device storage not removed");
