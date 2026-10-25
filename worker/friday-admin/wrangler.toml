@@ -1,0 +1,7 @@
+name = "kept-friday-admin"
+main = "index.js"
+compatibility_date = "2026-10-25"
+workers_dev = true
+
+# Intentionally no D1 binding or reminder data API.
+# ADMIN_EMAILS is a Worker secret injected by the deployment workflow.
