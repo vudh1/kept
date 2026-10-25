@@ -30,6 +30,11 @@ jobs:
         run: node scripts/provision-friday-access.mjs --validate-only
         env:
           ADMIN_EMAILS: ${{ secrets.KEPT_FRIDAY_ADMIN_EMAILS }}
+      - name: Require isolated Access provisioning token
+        env:
+          ACCESS_TOKEN: ${{ secrets.KEPT_FRIDAY_ACCESS_TOKEN }}
+        run: |
+          test -n "$ACCESS_TOKEN" || { echo "Missing KEPT_FRIDAY_ACCESS_TOKEN"; exit 1; }
       - name: Deploy separate fail-closed administrator Worker
         uses: cloudflare/wrangler-action@v4
         with:
@@ -44,6 +49,6 @@ jobs:
         run: node scripts/provision-friday-access.mjs
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCESS_TOKEN: ${{ secrets.KEPT_FRIDAY_ACCESS_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_WORKERS_TOKEN: ${{ secrets.KEPT_FRIDAY_ACCESS_TOKEN }}
+          CLOUDFLARE_ACCESS_TOKEN: ${{ secrets.KEPT_FRIDAY_ACCESS_TOKEN }}
           ADMIN_EMAILS: ${{ secrets.KEPT_FRIDAY_ADMIN_EMAILS }}
