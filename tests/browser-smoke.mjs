@@ -17,7 +17,7 @@ for (const [name, browserType, contextOptions] of configurations) {
 
   // Cross-origin interception of browser preflights varies by engine, so fake
   // just the Worker fetch interface in the test document, never the app logic.
-  await page.addInitScript(()=>{
+  const mockBackendScript=()=>{
     const original=window.fetch.bind(window);
     const token="f".repeat(64),key="a1".repeat(32);
     window.fetch=(input,options={})=>{
@@ -38,6 +38,16 @@ for (const [name, browserType, contextOptions] of configurations) {
       }
       return respond({error:"Unmocked"},404);
     };
+  };
+  await page.addInitScript(mockBackendScript);
+  await page.addInitScript(()=>{
+    if(localStorage.getItem("__seeded-legacy")!=="1"){
+      localStorage.setItem("kept.household.v1",JSON.stringify({
+        version:1,appliances:[],tasks:[],history:[],
+        shopping:[{id:"legacy-fake",name:"Offline test item",updatedAt:"2026-10-25T00:00:00Z",updatedBy:"test"}]
+      }));
+      localStorage.setItem("__seeded-legacy","1");
+    }
   });
   page.on("pageerror", e => pageErrors.push(e.message));
   page.on("console", m => { if (m.type() === "error") pageErrors.push(m.text()); });
@@ -68,6 +78,20 @@ for (const [name, browserType, contextOptions] of configurations) {
       throw new Error("Remote state was not encrypted and uploaded.");
     const plaintext=await page.evaluate(()=>localStorage.getItem("kept.household.v1"));
     if(plaintext!==null)throw new Error("Plaintext device storage not removed");
+
+    const freshContext=await browser.newContext({ ...contextOptions,serviceWorkers:"allow" });
+    const second=await freshContext.newPage();
+    await second.addInitScript(mockBackendScript);
+    await second.addInitScript(snapshot=>sessionStorage.setItem("__test_kept_cloud",JSON.stringify(snapshot)),stored);
+    try {
+      await second.goto(target,{waitUntil:"networkidle",timeout:30000});
+      await second.locator("#household-pin").fill("83519462");
+      await second.getByRole("button",{name:"Unlock this device"}).click();
+      await second.getByRole("button",{name:"Appliances"}).click();
+      await second.getByText("Test washer").first().waitFor({state:"visible",timeout:8000});
+      await second.getByRole("button",{name:"Shopping list"}).click();
+      await second.getByText("Offline test item").first().waitFor({state:"visible",timeout:8000});
+    } finally {await freshContext.close();}
     if(pageErrors.length) throw new Error("Browser JS errors: "+pageErrors.slice(0,6).join("; "));
     console.log("PASS "+name+" "+(isProduction?"production":"local")+" - add, view, reload, reopen.");
   } catch (e) {
