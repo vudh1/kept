@@ -1,0 +1,76 @@
+name: Preview Kept FRIDAY GitHub sign-in (manual, Free only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers_free_confirmed:
+        description: "I checked this Cloudflare account uses Workers Free (no paid upgrade)"
+        type: boolean
+        required: true
+        default: false
+      typed_confirmation:
+        description: "Type FRIDAY_FREE_PREVIEW to approve this isolated preview"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kept-friday-auth-preview
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    # Only the same immutable GitHub account ID that owns this personal repo
+    # can trigger a run that receives deployment secrets.
+    if: github.actor_id == github.repository_owner_id
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: friday-auth-preview
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate Kept and the preview guardrails
+        run: npm run check
+      - name: Prepare exact existing D1 binding and ephemeral secrets
+        id: preflight
+        run: node scripts/prepare-friday-auth-preview.mjs
+        env:
+          FRIDAY_PREVIEW_APPROVAL: ${{ inputs.typed_confirmation }}
+          FRIDAY_WORKERS_FREE_ATTESTED: ${{ inputs.workers_free_confirmed }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REPOSITORY_OWNER_ID: ${{ github.repository_owner_id }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_D1_TOKEN: ${{ secrets.KEPT_FRIDAY_D1_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          FRIDAY_GITHUB_CLIENT_ID: ${{ secrets.FRIDAY_GITHUB_CLIENT_ID }}
+          FRIDAY_GITHUB_CLIENT_SECRET: ${{ secrets.FRIDAY_GITHUB_CLIENT_SECRET }}
+      - name: Apply auth-only schema to existing D1
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.KEPT_FRIDAY_D1_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.152.0 d1 execute kept-friday-reminders \
+            --remote --yes --config "${{ steps.preflight.outputs.config_path }}" \
+            --file worker/friday-auth/schema.sql
+      - name: Deploy only the isolated GitHub-auth preview and its private secrets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.152.0 deploy --strict \
+            --config "${{ steps.preflight.outputs.config_path }}" \
+            --secrets-file "${{ steps.preflight.outputs.secrets_path }}"
+      - name: Verify unauthenticated endpoints fail closed
+        run: node scripts/probe-friday-auth-preview.mjs
+      - name: Remove temporary credential and deployment config files
+        if: always()
+        env:
+          SECRETS_FILE: ${{ steps.preflight.outputs.secrets_path }}
+          CONFIG_FILE: ${{ steps.preflight.outputs.config_path }}
+        run: node scripts/cleanup-friday-auth-preview.mjs
