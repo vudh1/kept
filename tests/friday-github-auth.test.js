@@ -219,3 +219,102 @@ test("rate limiter denies excess start attempts; DB outage never opens any route
   assert.equal((await ctx.call("/health")).status, 401);
   assert.equal((await ctx.call("/v1/friday/reminders")).status, 404);
 });
+
+test("OAuth callback rejects duplicate query keys, invalid codes, and cookie confusion before provider calls", async () => {
+  const ctx=setup();
+  const {state,cookie}=await begin(ctx);
+  const cases=[
+    `/auth/callback?state=${state}&state=${state}&code=once`,
+    `/auth/callback?state=${state}&code=once&code=other`,
+    `/auth/callback?state=${state}&code=%0Ainjected`,
+    `/auth/callback?state=${state}&code=%20`,
+    `/auth/callback?state=${state}&code=${"a".repeat(257)}`,
+  ];
+  for(const path of cases) {
+    const r=await ctx.call(path,{headers:{Cookie:cookie}});
+    assert.equal(r.status,403,path);
+    assert.equal(r.headers.get("Access-Control-Allow-Origin"),null);
+  }
+  assert.equal(ctx.calls.length,0,"Malformed callbacks must not reach GitHub");
+  const duplicates=await ctx.call(`/auth/callback?state=${state}&code=once`,{
+    headers:{Cookie:`${cookie}; ${cookie}`}
+  });
+  assert.equal(duplicates.status,403,"Duplicate flow cookies must be rejected");
+  assert.equal(ctx.calls.length,0);
+  const valid=await ctx.call(`/auth/callback?state=${state}&code=once`,{
+    headers:{Cookie:cookie}
+  });
+  assert.equal(valid.status,303,"Rejected malformed callbacks must not consume a good state");
+});
+
+test("OAuth state consume is atomic across concurrent callbacks", async () => {
+  const ctx=setup();
+  const {state,cookie}=await begin(ctx);
+  const path=`/auth/callback?state=${state}&code=one`;
+  const responses=await Promise.all(Array.from({length:5},()=>ctx.call(path,{headers:{Cookie:cookie}})));
+  assert.deepEqual(responses.map(x=>x.status).sort(),[303,403,403,403,403]);
+  assert.equal(ctx.calls.length,2,"Only the winner may exchange a GitHub token");
+  assert.equal(ctx.db.sessions.size,1);
+});
+
+test("auth endpoints never fall back to old Access, PIN, sync key or household routes", async () => {
+  const ctx=setup();
+  const forbidden=["/api/state","/api/research","/api/assist","/v1/friday/reminders","/v1/friday/grants","/admin","/auth/preview"];
+  for(const path of forbidden) {
+    const r=await ctx.call(path,{headers:{"X-Kept-Key":"test-shared-token",Authorization:"Bearer legacy-token"}});
+    assert.equal(r.status,404,path);
+    assert.equal(r.headers.get("Access-Control-Allow-Origin"),null);
+  }
+  const methods=[
+    {path:"/auth/start",method:"POST"},
+    {path:"/auth/callback",method:"POST"},
+    {path:"/health",method:"OPTIONS"},
+    {path:"/auth/status",method:"PUT"},
+  ];
+  for(const {path,method} of methods){
+    const r=await ctx.call(path,{method,headers:{Origin:ORIGIN}});
+    assert.equal(r.status,404,`${method} ${path}`);
+    assert.equal(r.headers.get("Access-Control-Allow-Origin"),null);
+  }
+  const foreign=await handleRequest(new Request("https://evil.example/auth/start"),ctx.env,ctx.deps);
+  assert.equal(foreign.status,503,"An alternate Host/Origin must not select an OAuth callback");
+});
+
+test("sessions fail closed through D1 outage; provider failures do not expose internals", async () => {
+  const ctx=setup();
+  const { sessionCookie }=await login(ctx);
+  ctx.db.failed=true;
+  for(const path of ["/auth/status","/health"]) {
+    const r=await ctx.call(path,{headers:{Cookie:sessionCookie}});
+    assert.equal(r.status,503,path);
+    assert.doesNotMatch(await r.text(),/private D1|github-secret-placeholder/);
+  }
+  const r=await ctx.call("/auth/revoke-sessions",{
+    method:"POST",headers:{Cookie:sessionCookie,Origin:ORIGIN}
+  });
+  assert.equal(r.status,503,"Database failure must not claim successful revocation");
+
+  const provider=setup();
+  const {state,cookie}=await begin(provider);
+  provider.deps.fetch=async()=>{throw new Error("provider leaked a credential");};
+  const denied=await provider.call(`/auth/callback?state=${state}&code=once`,{headers:{Cookie:cookie}});
+  assert.equal(denied.status,403);
+  assert.doesNotMatch(await denied.text(),/credential|github-secret-placeholder/);
+  assert.equal(provider.db.sessions.size,0);
+  // The callback state is already consumed even on provider failure.
+  assert.equal((await provider.call(`/auth/callback?state=${state}&code=once`,{headers:{Cookie:cookie}})).status,403);
+});
+
+test("GitHub network calls refuse redirects, are bounded and use only narrow identity scope",async()=>{
+  const ctx=setup();
+  const { response }=await login(ctx);
+  assert.equal(response.status,303);
+  assert.equal(ctx.calls.length,2);
+  for(const {url,opts} of ctx.calls){
+    assert.ok(["https://github.com/login/oauth/access_token","https://api.github.com/user"].includes(url));
+    assert.equal(opts.redirect,"error");
+    assert.ok(opts.signal,"Provider requests must time out");
+  }
+  const status=await ctx.call("/auth/status",{headers:{Cookie:"__Host-kept_friday_session="+("x".repeat(43))}});
+  assert.equal(status.status,401,"Forged sessions must not authorize");
+});
