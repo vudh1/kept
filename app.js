@@ -214,7 +214,23 @@ function renderSettings() {
     <section class="section card glass settings-card"><h2>Privacy & About</h2><p class="audit">Local records live in this browser's storage. Optional shared sync uses client-side AES-GCM encryption and a public ciphertext-only GitHub branch. AI is opt-in; questions and selected appliance details may be sent to a model, not your shopping list or history.</p><p class="form-tip">Part of FRIDAY · Quiet Glass v1</p></section>
     <section class="section"><button class="btn danger small" data-action="clear-local">Erase local device data</button></section>`;
 }
+function focusIdentity(element) {
+  if (!element || !app.contains?.(element)) return null;
+  if (element.dataset?.action) return { action: element.dataset.action, id: element.dataset.id || "" };
+  return element.id ? { elementId: element.id } : null;
+}
+function restoreFocus(identity) {
+  if (!identity) return;
+  const match = identity.elementId
+    ? document.getElementById(identity.elementId)
+    : [...app.querySelectorAll("[data-action]")].find(element =>
+      element.dataset.action === identity.action && (element.dataset.id || "") === identity.id);
+  match?.focus({ preventScroll: true });
+}
 function render() {
+  // Replacing a screen after a keyboard action must not strand VoiceOver or
+  // keyboard focus on <body>. Prefer the equivalent control when it remains.
+  const priorFocus = focusIdentity(document.activeElement);
   app.innerHTML = tab === "today" ? renderToday() : tab === "home" ? renderHome() : tab === "shop" ? renderShop() : tab === "assist" ? renderAssist() : renderSettings();
   const activeTab = tab === "assist" ? "settings" : tab;
   document.querySelectorAll(".tabbar [data-nav]").forEach(b => {
@@ -222,6 +238,7 @@ function render() {
     b.setAttribute("aria-current", b.dataset.nav === activeTab ? "page" : "false");
   });
   updateConnection();
+  restoreFocus(priorFocus);
   if ("setAppBadge" in navigator) navigator.setAppBadge(taskCount()).catch(()=>{});
 }
 function openModal(content) {
@@ -404,7 +421,12 @@ document.addEventListener("submit", async event => {
   }
 });
 editor.addEventListener("click",event=>{if(event.target===editor)editor.close();});
-editor.addEventListener("close",()=>{if(modalReturnFocus?.isConnected) modalReturnFocus.focus({preventScroll:true});modalReturnFocus=null;});
+editor.addEventListener("close",()=>{
+  // The opener can be replaced during Save; keep a stable keyboard destination.
+  const target = modalReturnFocus?.isConnected ? modalReturnFocus : document.querySelector('.tabbar [aria-current="page"]');
+  target?.focus({preventScroll:true});
+  modalReturnFocus=null;
+});
 window.addEventListener("hashchange",()=>{const value=location.hash.slice(1);if(["today","home","shop","assist","settings"].includes(value)){tab=value;render();}});
 document.addEventListener("visibilitychange",()=>{if(!document.hidden && canSync())performSync(false);});
 window.addEventListener("online",()=>{ updateConnection(); if(canSync())performSync(false); });
