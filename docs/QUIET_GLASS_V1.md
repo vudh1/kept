@@ -1,6 +1,6 @@
 # Kept mobile design review — Quiet Glass v1
 
-Status: **review proposal / PR only**. Nothing in this design document authorizes a production release, Worker deployment, or household reminder projection.
+Status: **Quiet Glass v1 merged in [PR #13](https://github.com/vudh1/kept/pull/13)**. This document also tracks subsequent Figma design work; new refinements still need their own review and release gate. Nothing here authorizes a Worker deployment or household reminder projection.
 
 ## Intent and coverage
 
@@ -63,12 +63,16 @@ The original first-run state uses a concise “All caught up” prompt and Add a
 - No Kept-to-Vela grants, opt-in consent controls, device identity, reminder publication, data projection activation or backend changes are in this PR.
 - No Canva assets were used. The UI uses small self-contained SVG navigation icons and CSS shapes, requiring no third-party image license or network download. Existing Apache-2.0 licensing remains.
 
-## Design tool handoff and verification gaps
+## Editable Figma handoff and verification gaps
 
-A [Kept Figma file](https://www.figma.com/design/Wg8dne62ksSUKu6p5lj0GP) was created to host editable Today, Shopping, appliance, settings, first-run and failure flows. **Figma MCP rejected the first edit with the Starter-plan tool-call limit**, so that file does not yet contain completed editable designs. Do not mark the Figma acceptance check as passed. Use this spec and synthetic screenshots to resume after the connected plan's quota becomes available; do not buy an upgrade automatically.
+The [Kept Quiet Glass v1 Figma file](https://www.figma.com/design/Wg8dne62ksSUKu6p5lj0GP) now contains **15 editable frames**, including Today warm light / quiet dark, Shopping, grouped Appliances, appliance setup / detail / success, Settings, first run, empty, failed sync, offline, a 430 px iPhone Plus variant, and interaction / accessibility specifications. It has two-mode semantic color variables, spacing/radius tokens, six typography styles, reusable linked buttons, and a clickable prototype connecting the main tabs and appliance setup flow. The interface samples contain synthetic fixtures only. No household data was sent to Figma. This editable design was completed **after** the source UI PR #13 was merged and is not itself evidence that every mockup detail is implemented in the PWA.
 
-Source test coverage includes core dates/AES-GCM/conflict merging, Friday security/projection boundaries, mocked DOM appliance setup, and Playwright shopping/maintenance/theme/offline/failed-sync workflows. Chromium was exercised locally at 390 × 844 and 430 × 932; WebKit is configured in CI but cannot be launched in this container without missing host libraries. CI results must be read from the PR before approval. No live two-device, cloud Worker, iPhone VoiceOver or production deployment verification is claimed.
+The subsequent review-branch navigation refinement implements **Today / Appliances / Shopping / More** as the four bottom tabs. Optional AI assistance moves under More → Help & Guidance and remains available from appliance detail. It also simplifies the Today overview into two readable counters, makes maintenance actions equal-width, and applies title capitalization to key Settings and maintenance headings. This preserves AI functionality while keeping everyday maintenance and shopping in immediate reach. It has no FRIDAY integration or cost effect.
+
+Updated local Chromium captures use only synthetic data: [Today light](screenshots/quiet-glass-followup/today-light.png), [Today dark](screenshots/quiet-glass-followup/today-dark.png), [Shopping](screenshots/quiet-glass-followup/shopping-light.png), [Settings](screenshots/quiet-glass-followup/settings-light.png), [offline](screenshots/quiet-glass-followup/settings-offline.png), and [mocked failed sync](screenshots/quiet-glass-followup/settings-sync-failed.png). The UI remains scrollable below the fixed bottom navigation.
+
+Source test coverage includes core dates/AES-GCM/conflict merging, Friday security/projection boundaries, mocked DOM appliance setup, and Playwright shopping/maintenance/theme/offline/failed-sync workflows. Browser smoke also checks the More/AI navigation flow without causing an AI request. Chromium is exercised at 390 × 844 and 430 × 932; WebKit is configured in CI and may require hosted runner libraries. CI results must be read from each new PR before approval. No live two-device, cloud Worker, iPhone VoiceOver or new production deployment verification is claimed by this Figma follow-up.
 
 ## Review and rollback
 
-Check 390/430 px iPhone layouts, large text, contrast, keyboard/VoiceOver, date/setup flows, no unauthorized network calls, and both themes. If rejected, close the PR or revert its UI-only commit. `main` is the GitHub Pages publication gate; **do not merge until reviewed**. The worker, `runtime-state` branch and separate FRIDAY grants remain unchanged.
+Check 390/430 px iPhone layouts, large text, contrast, keyboard/VoiceOver, date/setup flows, no unauthorized network calls, and both themes. If a follow-up is rejected, close its PR or revert its UI-only commit. `main` is the GitHub Pages publication gate; **do not merge a new refinement until reviewed**. The worker, `runtime-state` branch and separate FRIDAY grants remain unchanged.

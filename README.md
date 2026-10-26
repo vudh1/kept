@@ -4,6 +4,8 @@
 
 **FRIDAY:** [Integration ownership and compatibility](FRIDAY.md) · [Agent instructions](AGENTS.md).
 
+**Design:** [Kept Quiet Glass mobile flows in Figma](https://www.figma.com/design/Wg8dne62ksSUKu6p5lj0GP) · [Source implementation and review evidence](docs/QUIET_GLASS_V1.md). Figma contains editable prototype proposals; source and deployed features must be verified independently.
+
 > **Status:** v0.1 foundation with automated GitHub Pages publication. Shopping and maintenance screens, schedules, history, local persistence, encrypted GitHub sync code, Gemini manual research drafts, and Groq Q&A are implemented. Deployment, shared sync, and AI **require your own configuration and API keys**. Native timed Web Push, live store arrival geofencing, and retailer inventory crawling are **not implemented**. Calendar export provides basic iPhone reminders until Web Push is ready.
 
 ## Features

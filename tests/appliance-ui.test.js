@@ -57,7 +57,7 @@ test("adding a washer opens a modal, saves the device, and renders its tasks", a
 
     await import("../app.js?appliance-modal-smoke-test");
     assert.match(page.innerHTML,/Your home at a glance/);
-    assert.match(page.innerHTML,/Needs attention/);
+    assert.match(page.innerHTML,/Needs Attention/);
     assert.match(page.innerHTML,/Add to Shopping/);
     const click = listeners.get("click");
     await click({target:{closest(sel) {return sel==="[data-nav]"?{dataset:{nav:"home"}}:null;}}});
