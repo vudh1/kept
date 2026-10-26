@@ -11,7 +11,7 @@ test("adding a washer opens a modal, saves the device, and renders its tasks", a
     removeItem(key) { db.delete(key); }
   };
   const page = { innerHTML: "" };
-  const badge = { textContent: "" };
+  const badge = { textContent: "", classList: { toggle() {} } };
   const toast = { textContent: "", hidden: true };
   const modal = {
     open: false,
@@ -29,6 +29,7 @@ test("adding a washer opens a modal, saves the device, and renders its tasks", a
     "#editor-content": modalContent, "#connection-pill": badge
   };
   const dom = {
+    documentElement: { dataset: {} },
     querySelector(sel) { return nodes[sel] || null; },
     querySelectorAll() { return []; },
     addEventListener(event, callback) { listeners.set(event, callback); }
@@ -55,7 +56,9 @@ test("adding a washer opens a modal, saves the device, and renders its tasks", a
     });
 
     await import("../app.js?appliance-modal-smoke-test");
-    assert.match(page.innerHTML,/Good (morning|afternoon|evening)/);
+    assert.match(page.innerHTML,/Your home at a glance/);
+    assert.match(page.innerHTML,/Needs attention/);
+    assert.match(page.innerHTML,/Add to Shopping/);
     const click = listeners.get("click");
     await click({target:{closest(sel) {return sel==="[data-nav]"?{dataset:{nav:"home"}}:null;}}});
     assert.match(page.innerHTML,/Add new/);
@@ -75,12 +78,19 @@ test("adding a washer opens a modal, saves the device, and renders its tasks", a
     ])},preventDefault(){}});
     assert.equal(modal.open,false);
     assert.match(page.innerHTML,/Laundry washer/);
+    assert.match(page.innerHTML,/Added to your home/);
     assert.match(page.innerHTML,/Clean washer tub and gasket/);
     assert.match(page.innerHTML,/Inspect hoses for leaks or damage/);
     const saved=JSON.parse(db.get("kept.household.v1"));
     assert.equal(saved.appliances.length,1);
     assert.equal(saved.tasks.length,2);
     assert.equal(saved.tasks.every(t=>t.lastDone===""),true);
+    await click({target:{closest(sel) {return sel==="[data-nav]"?{dataset:{nav:"settings"}}:null;}}});
+    assert.match(page.innerHTML,/<details class="advanced-details sync-details">/);
+    assert.match(page.innerHTML,/Cloudflare Worker URL/);
+    await click({target:{closest(sel) {return sel==="[data-action]"?{dataset:{action:"set-theme",value:"dark"}}:null;}}});
+    assert.equal(dom.documentElement.dataset.theme,"dark");
+    assert.equal(JSON.parse(db.get("kept.settings.v1")).theme,"dark");
   } finally {
     for(const [name,value] of Object.entries(originals)) setGlobal(name,value);
   }
