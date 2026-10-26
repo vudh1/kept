@@ -9,7 +9,7 @@ const input = {
   previewApproval: "FRIDAY_FREE_PREVIEW", freePlanAttested: "true",
   repository: "vudh1/kept", repositoryOwner: "vudh1",
   gitRef: "refs/heads/main",
-  actorId: "45385394", ownerId: "45385394",
+  actorId: "12345", ownerId: "12345",
   accountId: "a".repeat(32),
   d1Token: "d".repeat(28), workerToken: "w".repeat(28),
   githubClientId: "Ov23liFakeClient1234",
@@ -67,7 +67,7 @@ test("generated preview binds ONLY the auth Worker and D1; secrets absent from c
   assert.ok(config.includes(`database_id = "${uuid}"`));
   assert.equal(config.includes(input.githubClientSecret), false);
   assert.equal(config.includes(input.githubClientId), false);
-  assert.deepEqual(secrets.ADMIN_GITHUB_IDS, "[45385394]");
+  assert.deepEqual(secrets.ADMIN_GITHUB_IDS, "[12345]");
   assert.equal(secrets.GITHUB_CLIENT_SECRET, input.githubClientSecret);
   assert.ok(secrets.RATE_LIMIT_KEY.length >= 32);
   assert.throws(() => previewFiles(input, "wrong"));
