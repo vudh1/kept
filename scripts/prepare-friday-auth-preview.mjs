@@ -23,6 +23,7 @@ export function validatePreviewInput(input) {
       input.freePlanAttested !== "true" ||
       input.repository !== "vudh1/kept" ||
       input.repositoryOwner !== "vudh1" ||
+      input.gitRef !== "refs/heads/main" ||
       !USER_ID_RE.test(input.actorId || "") ||
       input.actorId !== input.ownerId ||
       !ACCOUNT_RE.test(input.accountId || "") ||
@@ -101,6 +102,7 @@ function readInput() {
     freePlanAttested: process.env.FRIDAY_WORKERS_FREE_ATTESTED,
     repository: process.env.GITHUB_REPOSITORY,
     repositoryOwner: process.env.GITHUB_REPOSITORY_OWNER,
+    gitRef: process.env.GITHUB_REF,
     actorId: process.env.GITHUB_ACTOR_ID,
     ownerId: process.env.GITHUB_REPOSITORY_OWNER_ID,
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
@@ -126,7 +128,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.log("FRIDAY auth preview preflight passed; existing D1 located. No cloud mutation yet.");
   } catch (error) {
     // Never print configuration, secrets, bearer tokens or provider response bodies.
-    console.error(String(error?.message || "FRIDAY auth preflight failed.").slice(0, 180));
+    console.error("FRIDAY auth preview preflight failed; no Cloudflare changes.");
     process.exitCode = 1;
   }
 }
