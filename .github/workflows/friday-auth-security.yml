@@ -1,0 +1,40 @@
+name: Review FRIDAY administrator auth (no deployment)
+
+on:
+  pull_request:
+    paths:
+      - worker/friday-auth/**
+      - scripts/prepare-friday-auth-preview.mjs
+      - scripts/probe-friday-auth-preview.mjs
+      - scripts/cleanup-friday-auth-preview.mjs
+      - tests/friday-*.test.js
+      - tests/friday-github-auth-sqlite.smoke.mjs
+      - .github/workflows/deploy-friday-auth-preview.yml
+      - .github/workflows/friday-auth-security.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Run all Kept tests and static safety checks
+        run: npm run check
+      - name: Exercise real in-memory SQLite with synthetic GitHub identity
+        run: node tests/friday-github-auth-sqlite.smoke.mjs
+      - name: Confirm no production Worker, household or TV routes touched
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f worker/friday-auth/index.js
+          ! grep -Eq '"/api/state"|"/v1/friday/reminders"|"/v1/friday/grants"' worker/friday-auth/index.js
+          ! grep -Eq '^  (push|schedule|pull_request):' .github/workflows/deploy-friday-auth-preview.yml
+          grep -F "github.ref == 'refs/heads/main'" .github/workflows/deploy-friday-auth-preview.yml
+          grep -F "github.actor_id == github.repository_owner_id" .github/workflows/deploy-friday-auth-preview.yml
