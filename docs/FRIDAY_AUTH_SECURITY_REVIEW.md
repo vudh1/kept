@@ -1,0 +1,38 @@
+# Kept FRIDAY administrator OAuth — independent security review
+
+**Reviewed:** 2026-10-25. **Source:** draft [Kept PR #11](https://github.com/vudh1/kept/pull/11), `friday/cardless-github-auth-staged`. **Scope:** isolated administrator GitHub OAuth identity and a separately confirmed, manual-only preview. **Not** household authentication, sync, PIN recovery, Vela device pairing, reminder projection or public calendar feed.
+
+## Invariants and reviewed source boundary
+
+- **Kept remains owner** of appliance maintenance/shopping. Do not access the `runtime-state` Git branch or alter the existing `kept-sync` Worker, browser encryption or offline task execution.
+- New `worker/friday-auth/index.js` exports only `GET /auth/start`, `GET /auth/callback`, authenticated `GET /auth/status` and `GET /health`, and same-origin `POST /auth/logout` and `POST /auth/revoke-sessions`. All unknown methods/routes deny; **no reminder or television endpoints**.
+- Old `kept-friday-admin` requires Cloudflare Access and stays **fail closed**. New `kept-friday-auth` does not reuse its Access claims or the household shared token/PIN/passphrase.
+- GitHub OAuth token exchange uses a confidential Worker-held client secret, code+PKCE S256 (43-character challenge/verifier), an exact redirect to `https://kept-friday-auth.vudhone.workers.dev/auth/callback`, a random state and a Secure HttpOnly host-only SameSite=Lax flow cookie. The D1 OAuth state is atomically consumed once; the fetched numeric GitHub ID is compared to a private exact allowlist. Scope must equal `read:user`; any unexpected privileges fail closed. GitHub access tokens are **discarded**, not persisted.
+- A separate 256-bit random administrator session is stored only as a SHA-256 hash in the **auth-only** D1 tables. Browser cookie lasts 20 minutes; DB expiry/allowlist/revocation are checked on each protected request. Anonymous endpoints disclose no household data or CORS permission. State-changing POST requires matching `Origin`.
+- GitHub network requests are hardcoded HTTPS, have 7-second timeouts and **reject redirects**. Duplicate callback keys, malformed codes, state mismatch/replay and duplicate flow cookies are rejected.
+- Start limits: currently 5 attempts per 10-minute fixed window per keyed hash of `CF-Connecting-IP`; no raw IP stored. Unauthorized IPs can still consume quotas, so this is a risk control, not unlimited protection.
+- `.github/workflows/deploy-friday-auth-preview.yml` has **only** `workflow_dispatch`; job and preflight independently require `refs/heads/main`, immutable owner actor ID, Free-plan attestation, typed `FRIDAY_FREE_PREVIEW` and existing exact-name D1. Workflow uses a dedicated `friday-auth-preview` environment; it must not run until **after review/merge and separate manual confirmation**.
+- Secret values remain in private GitHub Actions settings and are passed to an ephemeral 0600 file for atomic Wrangler `--secrets-file` upload. Neither PR contents nor this review contains real secrets. Workflow cannot run a D1 create or a paid-plan enrollment command.
+
+## Tests performed / evidence
+
+- [Default CI Validate](https://github.com/vudh1/kept/actions/workflows/validate.yml): `npm run check` runs mocked OAuth state/cookie/PKCE/scope/identity/callback, atomic replay, rate-limit, logout, session expiry, D1 outage, malformed input, no-CORS and missing-route denial.
+- [Dedicated no-secret auth review](https://github.com/vudh1/kept/actions/workflows/friday-auth-security.yml): Node 24 `npm run check` plus `tests/friday-github-auth-sqlite.smoke.mjs` using real in-memory SQLite, and static separation of auth-only routes / manual-only main preview. **No cloud calls or deployments**.
+- Original PR supplied a local workerd+D1 test with mocked GitHub providers plus a Wrangler deployment **dry run with fake credentials**. These cannot prove the actual OAuth callback or hosted D1 database.
+- Test changes on PR #11 include: duplicate query/cookie denial; malformed codes; concurrent replay; GitHub outage/exception; missing D1; authorization scope; exact-origin and HTTP-method restrictions; forged/expired sessions; isolation from `/api/state`, `/api/assist`, `/api/research`, reminders and grants; workflow dispatch/ref/owner/secret/preflight invariants.
+- Review evidence is valid for the PR head and **must be rechecked on further edits**. A passing CI run is not deployed or browser/device verification.
+
+## Release blockers (exact separation)
+
+1. **Private OAuth App settings not independently verified.** Owner must check the callback equals exactly `https://kept-friday-auth.vudhone.workers.dev/auth/callback`, wildcard matching is **disabled**, application type/identity and requested scopes are correct. An owner report of a registered app does not prove settings.
+2. **Private deployment credentials/permissions not verified.** Owner must provision `FRIDAY_GITHUB_CLIENT_ID` and `FRIDAY_GITHUB_CLIENT_SECRET` privately and inspect the existing Cloudflare account's token scopes. Never expose values to PRs, chats, artifacts or logs. CI cannot list private secret values or OAuth App configuration.
+3. **D1 / provider Free-tier gates unverified.** The exact existing `kept-friday-reminders` D1, authorization for auth-only schema, token scopes, Workers Free quotas/caps and **actual account billing** cannot be verified from source. No new credit card or paid-plan switch is allowed. The schema step on manual preview will mutate only existing D1 auth tables, but its success has not been observed remotely.
+4. **Hosted sign-in not exercised.** Need owner-confirmed manual preview dispatch after merge/review, then browser tests with a real allowed GitHub account, an unapproved account, exact host cookie behavior, redirect/callback state and PKCE, session expiry/revoke-all, logout CSRF, provider/D1 failure and quota exhaustion. The existing preview probe checks only anonymous 401s and an OAuth redirect; it does **not** prove a full login.
+5. **Distributed start abuse / storage retention not solved.** An unauthenticated distributed adversary can exhaust free Worker/D1 quotas even with the per-IP limiter; expired flow, session and IP-bucket rows currently lack a bounded cleanup mechanism. Fail-closed preserves confidentiality but **not uptime**. Before any household grants or wider use, set a reviewed global admission cap, bounded cleanup/retention, quota monitoring and explicit Free-tier failure checks.
+6. **No household projection authorization.** Even a verified admin session grants **zero rights** to read household `runtime-state`, issue a TV profile grant, or expose tasks. FRIDAY issues [#1](https://github.com/vudh1/friday/issues/1) and [#3](https://github.com/vudh1/friday/issues/3) require separate reviewed consent and versioned authorized read-contract design. No reminder/TV route is authorized or implemented.
+
+## Rollback, compatibility and cost
+
+No changes to `main`, production Pages, `kept-sync`, `runtime-state` or TV clients were made by this review. On rejected/failed preview, keep the admin endpoint disabled or remove the separate `kept-friday-auth` route; revoke its D1 sessions. Leave the other Workers untouched. Kept local browsing, maintenance completion and shopping must remain operational regardless of GitHub OAuth, D1, FRIDAY or Cloudflare outage.
+
+**Cost impact of the review: no new service, payment method or deployment.** Validation uses normal repository CI. Actual Cloudflare/GitHub billing, usage or payment methods are not visible; no promise of verified $0 invoices. Any later preview remains subject to the [FRIDAY cardless policy](https://github.com/vudh1/friday/blob/main/docs/COST_POLICY.md) and explicit owner action.
