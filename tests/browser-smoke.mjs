@@ -28,6 +28,8 @@ for (const [name, browserType, contextOptions] of configurations) {
     if (!response?.ok()) throw new Error("Home page HTTP " + response?.status());
     await page.getByRole("heading",{name:"Everything feels in place."}).waitFor();
     if (await page.locator(".tabbar .nav-item").count() !== 4) throw new Error("Expected four bottom navigation targets");
+    const tabNames = await page.locator(".tabbar .nav-item span").allTextContents();
+    if (tabNames.join("|") !== "Today|Appliances|Shopping|More") throw new Error("Quiet Glass navigation order changed: "+tabNames.join("|"));
     for (const nav of await page.locator(".tabbar .nav-item").all()) {
       if (!await nav.isVisible() || (await nav.boundingBox())?.height < 44) throw new Error("Navigation not reachable by touch");
     }
@@ -55,7 +57,12 @@ for (const [name, browserType, contextOptions] of configurations) {
     const dateValue = [lastDone.getFullYear(),String(lastDone.getMonth()+1).padStart(2,"0"),String(lastDone.getDate()).padStart(2,"0")].join("-");
     await page.locator('#editor input[name="lastDone"]').fill(dateValue);
     await page.locator('#editor button[type="submit"]').click();
-    await page.getByRole("button",{name:"Open settings"}).click();
+    await page.getByRole("button",{name:"More",exact:true}).click();
+    await page.getByRole("heading",{name:"Settings"}).waitFor();
+    await page.getByRole("button",{name:"Ask Kept"}).click();
+    await page.getByRole("heading",{name:"A little extra help."}).waitFor();
+    if (await page.locator('.tabbar [data-nav="settings"]').getAttribute("aria-current") !== "page") throw new Error("More tab should remain selected inside optional AI help");
+    await page.getByRole("button",{name:"More",exact:true}).click();
     await page.getByRole("button",{name:"☾ Dark"}).click();
     if (await page.locator("html").getAttribute("data-theme") !== "dark") throw new Error("Dark theme not applied");
     if (await page.locator("#backend-url").isVisible()) throw new Error("Advanced credentials unexpectedly visible");
@@ -74,7 +81,7 @@ for (const [name, browserType, contextOptions] of configurations) {
       await page.getByRole("button",{name:"Today"}).click();
       await page.getByText("Clean washer tub and gasket").first().waitFor();
       await page.screenshot({path:join(screenshotDir,"today-light.png")});
-      await page.getByRole("button",{name:"Open settings"}).click();
+      await page.getByRole("button",{name:"More",exact:true}).click();
       await page.getByRole("button",{name:"☾ Dark"}).click();
       await page.getByRole("button",{name:"Today"}).click();
       await page.screenshot({path:join(screenshotDir,"today-dark.png")});
@@ -85,7 +92,7 @@ for (const [name, browserType, contextOptions] of configurations) {
     await context.setOffline(true);
     await page.getByText("Offline · saved here").first().waitFor();
     if (screenshotDir && name === "chromium-mobile") {
-      await page.getByRole("button",{name:"Open settings"}).click();
+        await page.getByRole("button",{name:"More",exact:true}).click();
       await page.screenshot({path:join(screenshotDir,"settings-offline.png")});
     }
     await context.setOffline(false);
@@ -97,7 +104,7 @@ for (const [name, browserType, contextOptions] of configurations) {
       contentType:"application/json",
       body:route.request().method()==="OPTIONS" ? "" : JSON.stringify({error:"Temporary sync outage"})
     }));
-    await page.getByRole("button",{name:"Open settings"}).click();
+    await page.getByRole("button",{name:"More",exact:true}).click();
     await page.locator(".sync-details summary").click();
     await page.locator("#backend-url").fill("http://localhost:4173/mock-sync");
     await page.locator("#backend-token").fill("synthetic-test-only");
