@@ -8,6 +8,7 @@ const isProduction = target.startsWith("https://");
 const screenshotDir = process.env.KEPT_SCREENSHOT_DIR;
 const configurations = [
   ["chromium-mobile", chromium, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }],
+  ["chromium-430", chromium, { viewport: { width: 430, height: 932 }, isMobile: true, hasTouch: true }],
   ["webkit-iphone", webkit, { ...devices["iPhone 13"] }]
 ];
 const selectedBrowser = process.env.KEPT_BROWSER;
@@ -101,6 +102,8 @@ for (const [name, browserType, contextOptions] of configurations) {
     await page.locator("#settings-form button[type=submit]").click();
     await page.getByText("Sync needs attention").first().waitFor({timeout:8000});
     if (screenshotDir && name === "chromium-mobile") {
+      await page.locator("#toast").waitFor({state:"hidden",timeout:7000});
+      await page.evaluate(() => window.scrollTo(0,0));
       await page.screenshot({path:join(screenshotDir,"settings-sync-failed.png")});
     }
     await page.reload({waitUntil:"networkidle",timeout:30000});

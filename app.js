@@ -108,6 +108,7 @@ async function performSync(showToast = true) {
   } catch (error) {
     syncStatus = "error";
     updateConnection();
+    if (tab === "settings") render();
     if (showToast) notify(error.message);
     console.warn("Kept sync could not complete:", error.message);
   } finally {

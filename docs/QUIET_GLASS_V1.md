@@ -67,7 +67,7 @@ The original first-run state uses a concise “All caught up” prompt and Add a
 
 A [Kept Figma file](https://www.figma.com/design/Wg8dne62ksSUKu6p5lj0GP) was created to host editable Today, Shopping, appliance, settings, first-run and failure flows. **Figma MCP rejected the first edit with the Starter-plan tool-call limit**, so that file does not yet contain completed editable designs. Do not mark the Figma acceptance check as passed. Use this spec and synthetic screenshots to resume after the connected plan's quota becomes available; do not buy an upgrade automatically.
 
-Source test coverage includes core dates/AES-GCM/conflict merging, Friday security/projection boundaries, mocked DOM appliance setup, and Playwright shopping/maintenance/theme/offline/failed-sync workflows. Chromium was exercised locally; WebKit is configured in CI but cannot be launched in this container without missing host libraries. CI results must be read from the PR before approval. No live two-device, cloud Worker, iPhone VoiceOver or production deployment verification is claimed.
+Source test coverage includes core dates/AES-GCM/conflict merging, Friday security/projection boundaries, mocked DOM appliance setup, and Playwright shopping/maintenance/theme/offline/failed-sync workflows. Chromium was exercised locally at 390 × 844 and 430 × 932; WebKit is configured in CI but cannot be launched in this container without missing host libraries. CI results must be read from the PR before approval. No live two-device, cloud Worker, iPhone VoiceOver or production deployment verification is claimed.
 
 ## Review and rollback
 

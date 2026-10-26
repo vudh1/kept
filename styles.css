@@ -167,6 +167,7 @@ textarea { min-height: 95px; resize: vertical; }
   --warn:#F1C783; --danger:#F2A59A; --danger-soft:#3C292B;
   --focus:#BCEAFF; --shadow:0 12px 44px rgba(0,0,0,.16);
 }
+html { scroll-behavior:auto; }
 body { background:var(--background); color:var(--text); }
 .ambient { background:radial-gradient(circle at 0 0,rgba(137,215,174,.11),transparent 44%),var(--background); }
 .glow { display:none; }
