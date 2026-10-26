@@ -117,6 +117,7 @@ async function githubUser(code, verifier, env, origin, requestFn) {
       code, code_verifier: verifier, redirect_uri: callback,
     }),
     signal: AbortSignal.timeout(7000),
+    redirect: "error",
   });
   if (!response.ok) return null;
   const token = await response.json();
@@ -133,6 +134,7 @@ async function githubUser(code, verifier, env, origin, requestFn) {
       "User-Agent": "kept-friday-auth",
     },
     signal: AbortSignal.timeout(7000),
+    redirect: "error",
   });
   if (!userResponse.ok) return null;
   const user = await userResponse.json();
@@ -182,7 +184,11 @@ export async function handleRequest(request, env, deps = {}) {
       const previous = getCookie(request.headers.get("Cookie"), FLOW_COOKIE);
       const expired = cookie(FLOW_COOKIE, "", 0);
       const deny = () => json({ error: "Sign-in rejected." }, 403, { "Set-Cookie": expired });
-      if (!state || !code || code.length > 512 ||
+      // Duplicate callback keys and control characters make OAuth interpretation
+      // ambiguous; reject before any D1 consume or provider exchange.
+      if (url.searchParams.getAll("state").length !== 1 ||
+          url.searchParams.getAll("code").length !== 1 ||
+          !state || !code || !/^[A-Za-z0-9_-]{1,256}$/.test(code) ||
           !/^[A-Za-z0-9_-]{43}$/.test(state) || state !== previous) return deny();
       // Atomic consume; a valid state can never be exchanged twice.
       const flow = await dbFirst(db,
