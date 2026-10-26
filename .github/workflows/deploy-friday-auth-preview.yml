@@ -24,7 +24,10 @@ jobs:
   preview:
     # Only the same immutable GitHub account ID that owns this personal repo
     # can trigger a run that receives deployment secrets.
-    if: github.actor_id == github.repository_owner_id
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor_id == github.repository_owner_id
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: friday-auth-preview
@@ -45,6 +48,7 @@ jobs:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
           GITHUB_ACTOR_ID: ${{ github.actor_id }}
           GITHUB_REPOSITORY_OWNER_ID: ${{ github.repository_owner_id }}
+          GITHUB_REF: ${{ github.ref }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_D1_TOKEN: ${{ secrets.KEPT_FRIDAY_D1_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
